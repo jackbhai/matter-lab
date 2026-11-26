@@ -1,0 +1,74 @@
+name: Build & Deploy
+
+# Mirrors the repo's existing deploy route (see
+# ~/workspace/skills/github/bin/gh_pages_deploy.py): source lives on `main`,
+# the built site is published to the `gh-pages` branch.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # deploy job pushes dist/ to gh-pages
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Full verify-local needs a Chrome binary. CI installs the same
+      # puppeteer chrome-headless-shell the local scripts resolve, then
+      # runs the real headless verification against dist/.
+      - name: Install chrome-headless-shell for verification
+        run: npx --yes @puppeteer/browsers install chrome-headless-shell@stable --path "$HOME/.cache/puppeteer"
+
+      - name: Resolve CHROME_PATH
+        run: |
+          CHROME_BIN="$(find "$HOME/.cache/puppeteer" -name chrome-headless-shell -type f | sort | tail -1)"
+          echo "CHROME_PATH=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Verify (headless Chrome, local dist)
+        run: node scripts/verify-local.mjs
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+  deploy:
+    # Same effect as gh_pages_deploy.py: built dist/ -> gh-pages branch.
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish dist/ to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          # actions-gh-pages writes .nojekyll by default, matching the
+          # manual deploy script's behaviour.

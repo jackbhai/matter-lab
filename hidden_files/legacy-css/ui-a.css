@@ -1,0 +1,189 @@
+/* Token scope fix (round 2): --ml-glass must be declared ON the shell —
+   declared at :root it resolved --glass-bg to theme.css's global version
+   (white in the Day theme); on [data-ml-shell] it resolves to ml-v2's
+   lab-dark glass, matching every other shell surface. */
+[data-ml-shell] { --ml-glass: var(--glass-bg, rgba(10, 24, 33, 0.72)); }
+
+/* ============================================================
+   Matter Lab UI-A — main-screen chrome + acceptance fixes.
+   Loaded LAST (after theme.css / w31 / ml-v2) so these rules win
+   on the surfaces they own. Everything is scoped to [data-mlroot]
+   or .ml-* classes; no global element restyling.
+   ============================================================ */
+
+/* ---- (a) panels fit + scroll within the viewport, 360px too ---- */
+[data-mlroot="1"] [data-sidepanel="1"] {
+  left: 80px !important; /* rail is 64px wide since UI-A labels — keep the panel clear of it */
+  max-width: calc(100vw - 96px);
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+/* speed / view / quality rows wrap instead of slicing off-screen */
+[data-mlroot="1"] [data-sidepanel="1"] > div { flex-wrap: wrap; max-width: 100%; }
+[data-mlroot="1"] .sheet {
+  max-width: min(680px, 100vw);
+  max-height: 88dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+/* ---- (b) no truncated labels: pills/buttons wrap text, never ellipsis-clip */
+[data-mlroot="1"] .btn, [data-mlroot="1"] .chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  min-height: var(--ml-touch);
+}
+/* ---- touch targets: every primary control ≥44px ---- */
+[data-mlroot="1"] button { min-height: var(--ml-touch); }
+[data-mlroot="1"] [data-rail] { min-height: var(--ml-touch); }
+
+/* ---- (d) side rail: icon + visible text label ---- */
+[data-mlroot="1"] .ml-rail-btn {
+  width: 64px !important;
+  height: 58px !important;
+  border-radius: var(--ml-r-lg) !important;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+[data-mlroot="1"] .ml-rail-label { font-size: 8.5px; line-height: 1.1; font-weight: 600; letter-spacing: 0; white-space: nowrap; max-width: 100%; overflow: hidden; }
+
+/* ---- TopBar ---- */
+.ml-topbar2 {
+  position: sticky; top: var(--ml-sp-2); z-index: 150;
+  display: flex; align-items: center; gap: var(--ml-sp-1);
+  background: var(--ml-glass); border: 1px solid var(--ml-glass-edge);
+  border-radius: var(--ml-r-lg); padding: var(--ml-sp-1);
+  box-shadow: var(--ml-shadow-sm);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.ml-tb-btn {
+  min-width: var(--ml-touch); min-height: var(--ml-touch);
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  background: transparent; border: 0; border-radius: var(--ml-r-md);
+  color: var(--ml-c-fg); font-size: 15px; cursor: pointer; padding: 2px 6px;
+}
+.ml-tb-btn span { font-size: var(--ml-fs-xs); font-weight: 600; }
+.ml-tb-btn:active { background: var(--ml-c-surface-3); }
+.ml-tb-stats { font-size: var(--ml-fs-xs); color: var(--ml-c-fg-3); white-space: nowrap; overflow: hidden; }
+@media (max-width: 430px) { .ml-tb-stats { display: none; } }
+
+/* ---- Bottom Dock ---- */
+.ml-dock {
+  position: sticky; bottom: var(--ml-sp-2); z-index: 150;
+  display: flex; gap: var(--ml-sp-1);
+  background: var(--ml-glass); border: 1px solid var(--ml-glass-edge);
+  border-radius: var(--ml-r-lg); padding: var(--ml-sp-1);
+  box-shadow: var(--ml-shadow);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.ml-dock-tab {
+  flex: 1 1 0; min-width: 0; min-height: 52px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: transparent; border: 1px solid transparent; border-radius: var(--ml-r-md);
+  color: var(--ml-c-fg-2); font-size: var(--ml-fs-xs); font-weight: 600; cursor: pointer;
+  white-space: nowrap; overflow-wrap: normal; padding: 4px 2px;
+}
+.ml-dock-tab[aria-pressed="true"] { background: var(--ml-c-surface-3); color: var(--ml-c-fg); border-color: var(--ml-c-line); }
+.ml-dock-dot { width: 14px; height: 14px; border-radius: 5px; background: var(--ml-c-surface-3); border: 1px solid var(--ml-c-line); }
+.ml-dock-dot[data-tab="solids"] { background: linear-gradient(135deg, #c9a86a, #8a6f3c); }
+.ml-dock-dot[data-tab="liquids"] { background: linear-gradient(135deg, #57b7e8, #2563eb); }
+.ml-dock-dot[data-tab="gases"] { background: linear-gradient(135deg, #e8eef2, #9db5ac); }
+.ml-dock-dot[data-tab="gear"] { background: linear-gradient(135deg, #9fb4c0, #546e7a); }
+.ml-dock-dot[data-tab="favs"] { background: linear-gradient(135deg, #ffd166, #e8a13a); }
+
+/* ---- Picker chip strip ---- */
+.ml-chipstrip {
+  display: flex; gap: var(--ml-sp-2); overflow-x: auto; overflow-y: hidden;
+  padding: var(--ml-sp-1) 0; -webkit-overflow-scrolling: touch; max-width: 100%;
+}
+
+/* ---- Tool wheel ---- */
+.ml-wheel { position: absolute; right: var(--ml-sp-2); bottom: 52px; z-index: 140; display: flex; flex-direction: column; align-items: flex-end; gap: var(--ml-sp-2); }
+.ml-wheel-btn {
+  min-height: 52px; min-width: 96px; padding: 6px 14px;
+  display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  border-radius: var(--ml-r-pill); border: 1px solid var(--ml-c-accent-2);
+  background: var(--ml-glass); color: var(--ml-c-fg); box-shadow: var(--ml-shadow);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  font-weight: 700; cursor: pointer;
+}
+.ml-wheel-cur { font-size: var(--ml-fs-md); }
+.ml-wheel-pop {
+  border-radius: var(--ml-r-lg); padding: var(--ml-sp-2);
+  width: min(264px, calc(100vw - 32px)); max-height: 46dvh; overflow-y: auto; overflow-x: hidden;
+  box-shadow: var(--ml-shadow); box-sizing: border-box;
+}
+.ml-wheel-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--ml-sp-1); margin-top: 6px; }
+.ml-wheel-more { display: flex; flex-wrap: wrap; gap: var(--ml-sp-1); margin-top: 6px; max-width: 100%; }
+
+/* ---- (g) bench / floor visual + empty-state hint ---- */
+.ml-stage {
+  min-height: 0; /* P0-GEOMETRY: flex column must be able to shrink the stage, or the world floor drops below the visible area */
+  border-radius: var(--ml-r-lg);
+  background:
+    linear-gradient(180deg, transparent 0%, transparent 82%, rgba(122, 84, 46, .28) 82.2%, rgba(84, 56, 30, .55) 100%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.025) 0 46px, transparent 46px 92px),
+    radial-gradient(120% 90% at 50% 0%, rgba(120, 180, 200, .07), transparent 60%);
+}
+.ml-stage::after { /* bench surface line at the world floor */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 14px;
+  border-radius: 0 0 var(--ml-r-lg) var(--ml-r-lg);
+  background: linear-gradient(180deg, rgba(196, 144, 84, .5), rgba(110, 74, 40, .65));
+  box-shadow: 0 -1px 0 rgba(255, 220, 170, .35);
+  pointer-events: none;
+}
+.ml-empty-hint {
+  position: absolute; left: calc(50% + 30px); top: 14px; transform: translateX(-50%);
+  z-index: 120; pointer-events: none; text-align: center;
+  max-width: min(320px, calc(100% - 96px));
+  background: var(--ml-glass); border: 1px dashed var(--ml-c-line-2);
+  color: var(--ml-c-fg); border-radius: var(--ml-r-md);
+  padding: var(--ml-sp-2) var(--ml-sp-3); font-size: var(--ml-fs-sm); line-height: 1.45;
+  box-shadow: var(--ml-shadow-sm);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+
+/* ---- (7) pour / dropper micro-animation (visual only) ---- */
+.ml-pour {
+  position: absolute; top: 10px; left: 50%; width: 10px; height: 26px; z-index: 125;
+  transform: translateX(-50%); pointer-events: none;
+  border-radius: 0 0 8px 8px;
+  background: linear-gradient(180deg, rgba(140, 210, 245, .0), rgba(140, 210, 245, .85));
+  animation: ml-pour-drop .8s var(--ml-ease) 1;
+}
+@keyframes ml-pour-drop {
+  0% { opacity: 0; transform: translate(-50%, -6px) scaleY(.4); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, 44px) scaleY(1.15); }
+}
+
+/* InfoCard sheet must be fully opaque — the glass .sheet layer lets the
+   picker text bleed through behind it (defect found in UI-A round 1). */
+[data-mlroot="1"] .sheet[data-infocard="1"] {
+  background-color: #0a1821;
+  background-image: linear-gradient(rgba(17, 34, 44, 0.97), rgba(17, 34, 44, 0.97));
+}
+
+/* ---- (f) picker heading one line; hint on its own line ---- */
+[data-mlroot="1"] .ml-picker-head { flex-wrap: wrap; }
+[data-mlroot="1"] .ml-picker-title { white-space: nowrap; font-size: var(--ml-fs-lg); }
+[data-mlroot="1"] .ml-picker-hint { flex-basis: 100%; order: 3; }
+
+/* ---- accessibility: reduced motion kills micro-animations ---- */
+@media (prefers-reduced-motion: reduce) {
+  .ml-pour { animation: none; display: none; }
+  .ml-ticker-track { animation: none !important; }
+  [data-mlroot="1"] * { transition-duration: .01ms !important; }
+}
+
+/* ---- tablet landscape / larger: dock + topbar breathe ---- */
+@media (min-width: 700px) {
+  .ml-dock-tab { min-height: 56px; font-size: var(--ml-fs-sm); }
+  .ml-wheel { bottom: 60px; }
+}
