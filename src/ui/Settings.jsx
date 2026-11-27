@@ -51,8 +51,8 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
           <button key={m} className={`btn sm ${viewMode === m ? '' : 'ghost'}`} onClick={() => setViewMode(m)}>{l}</button>
         ))}
       </div>
-      <button className={`btn sm ${textureOn ? '' : 'ghost'}`} aria-pressed={textureOn} style={{ marginTop: 6 }} onClick={() => setTextureOn(!textureOn)}>Texture {textureOn ? 'on' : 'off'}</button>
-      {textureOn && (
+      <button className={`btn sm ${textureOn && !perf?.adaptive?.safeMode ? '' : 'ghost'}`} aria-pressed={textureOn && !perf?.adaptive?.safeMode} disabled={!!perf?.adaptive?.safeMode} style={{ marginTop: 6 }} onClick={() => setTextureOn(!textureOn)}>Texture {perf?.adaptive?.safeMode ? 'off (2GB safe)' : textureOn ? 'on' : 'off'}</button>
+      {textureOn && !perf?.adaptive?.safeMode && (
         <div style={{ display: 'flex', gap: 4, marginTop: 6, alignItems: 'center' }} role="group" aria-label="Texture quality">
           <span className="dim sm">Detail</span>
           {[['auto', 'Auto'], ['low', 'Low'], ['med', 'Med'], ['high', 'High']].map(([q, l]) => (
@@ -174,13 +174,43 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
         <>
           <div className="seclabel" style={{ marginTop: 12 }}>Performance</div>
           <p className="dim sm" style={{ margin: 4, fontSize: 11, lineHeight: 1.35 }}>{perf.device}</p>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }} role="group" aria-label="Particle cap">
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }} role="group" aria-label="Particle movement cap">
             <span className="dim sm">Movement cap</span>
             {[0, 4000, 8000, 16000].map((n) => (
               <button key={n} className={`btn sm ${perf.capParts === n ? '' : 'ghost'}`} aria-pressed={perf.capParts === n} onClick={() => perf.applyCap(n)}>{n || 'Off'}</button>
             ))}
             <span className="dim sm"> (movement ~¼ duty when capped)</span>
           </div>
+          {perf.adaptive && (
+            <section aria-label="Adaptive performance" style={{ marginTop: 12, padding: 9, border: '1px solid var(--line)', borderRadius: 10, background: 'rgba(255,255,255,0.025)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' }}>
+                <b className="sm">Adaptive quality</b>
+                <span className="sm" aria-live="polite">{perf.adaptive.label}</span>
+                {perf.adaptive.safeMode && <span className="dim sm">2GB guard active</span>}
+              </div>
+              <p className="dim sm" style={{ margin: '5px 0', lineHeight: 1.4 }}>
+                {Math.round(perf.adaptive.fps || 0)} FPS · {Math.round((perf.adaptive.memoryPressure || 0) * 100)}% memory pressure · {perf.adaptive.engineTier?.cols}×{perf.adaptive.engineTier?.rows} grid
+              </p>
+              <p className="dim sm" style={{ margin: '0 0 6px', lineHeight: 1.4 }}>
+                {perf.adaptive.particleBudget > 0
+                  ? `${perf.adaptive.particles || 0} / ${perf.adaptive.particleBudget} particle budget`
+                  : `${perf.adaptive.particles || 0} particles · adaptive budget`}
+                {perf.adaptive.safeMode ? ' · procedural textures off · world textures ≤512px' : ''}
+              </p>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '5px 0 7px' }} className="sm">
+                <input type="checkbox" checked={!!perf.adaptive.auto} onChange={(e) => perf.adaptive.setAuto(e.target.checked)} /> Automatic tier switching
+              </label>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }} role="group" aria-label="Quality tier">
+                {[[0, 'Max'], [1, 'High'], [2, 'Mid'], [3, 'Low'], [4, perf.adaptive.safeMode ? '2GB Safe' : 'Min grid']].map(([index, label]) => {
+                  const disabled = !!perf.adaptive.safeMode && index < 4;
+                  return <button key={index} type="button" className={`btn sm ${perf.adaptive.index === index ? '' : 'ghost'}`} aria-pressed={perf.adaptive.index === index} disabled={disabled} onClick={() => perf.adaptive.setTier(index)}>{label}</button>;
+                })}
+              </div>
+              <p className="dim sm" style={{ margin: '6px 0 0', lineHeight: 1.4 }}>
+                Auto uses sustained FPS and memory signals with hysteresis. 2GB Safe locks the world to the engine's smallest grid and enforces a hard particle budget.
+              </p>
+            </section>
+          )}
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }} className="sm">
             <input type="checkbox" checked={!!power} onChange={(e) => setPower(e.target.checked)} /> Power Mode — 10× speed, stronger gravity, Zoom 5×
           </label>

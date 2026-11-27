@@ -8,7 +8,8 @@ import { SUBSTANCES, BY_KEY, CATS, SUBSTANCE_COUNT } from '../core/matter-elemen
 import { MatterEngine, GEAR, TIERS } from '../core/matter-engine';
 import { MatterSound } from '../core/matter-sound';
 import { enabled as sfxEnabled, setEnabled as setSfxEnabled, hapticFx } from '../core/sfx';
-import { loadPerf, deviceSummary, setPerf as setPerfStore, autoStartTier, scheduleRepaint } from '../core/perf.js';
+import { loadPerf, deviceSummary, setPerf as setPerfStore, autoStartTier, scheduleRepaint, deviceInfo, resourceBudget, measureMemory, setSimulatedDevice } from '../core/perf.js';
+import { createAdaptiveTiers, dimensionsForTier, tierName } from '../core/tier-engine.js';
 import { GLRenderer, buildGLTables } from '../render/gl-renderer';
 import { Card, Empty, toast } from '../ui/kit';
 import TopBar from '../ui/TopBar.jsx';
@@ -77,12 +78,8 @@ const SPEEDS = PERF.lowEnd ? [0.25, 0.5, 1, 2] : [0.25, 0.5, 1, 2, 4]; // low-en
    cell budget, but cols/rows follow the real viewport aspect so a cell is
    SQUARE on any screen (was: fixed 16:9 landscape grid stretched onto tall
    portrait phones, which also shrank gear stamps to a few px). */
-const TIER_CELLS = TIERS.map((t) => t.cols * t.rows);
 const dimsForTier = (ti, aspect) => {
-  const cells = TIER_CELLS[Math.max(0, Math.min(TIERS.length - 1, ti | 0))];
-  const a = Math.max(0.3, Math.min(3.4, aspect || 16 / 9));
-  const cols = Math.max(96, Math.min(720, Math.round(Math.sqrt(cells * a))));
-  const rows = Math.max(96, Math.min(720, Math.round(cells / cols)));
+  const { cols, rows } = dimensionsForTier(ti, aspect);
   return { cols, rows };
 };
 const viewAspect = () => { try { const a = window.innerWidth / Math.max(1, window.innerHeight); return a > 0 && Number.isFinite(a) ? a : 16 / 9; } catch { return 16 / 9; } };
@@ -238,7 +235,6 @@ export function wsDebug(e, cv) {
 
 export function MatterLab(props) {
   const [glass, setGlass] = useState(false);
-  const [glass, setGlass] = useState(false); // Winzy-style right-side glass settings rail
   const launch = props && props.launch ? props.launch : undefined;
   const onHome = props && typeof props.onHome === 'function' ? props.onHome : null;
   const rootRef = useRef(null), boxRef = useRef(null), canvasRef = useRef(null);
@@ -270,6 +266,8 @@ export function MatterLab(props) {
   const [constructErr, setConstructErr] = useState(null); // HARDEN A1: engine build failure -> Empty + retry
   const [attempt, setAttempt] = useState(0);
   const govRef = useRef({ tickRate: 60, ladderStep: 0, tierIndex: -1, startTierIndex: -1, overSince: 0, healthySince: 0, lastResChange: 0, stepAt: 0 });
+  const adaptiveRef = useRef(null);
+  const safeModeRef = useRef(PERF.safe2GB);
   const errStreakRef = useRef(0); const errOkSinceRef = useRef(0);
   /* P0-REOPEN (2026-11-27): the v3 watchdog sampled the visible canvas's
      BACKING STORE — but on the user's Android in-app browser the backing
@@ -309,6 +307,11 @@ export function MatterLab(props) {
   const [speedI, setSpeedI] = useState(2);
   const [fps, setFps] = useState(0); const [parts, setParts] = useState(0);
   const [tierI, setTierI] = useState(1); const [tierNote, setTierNote] = useState('');
+  const [adaptiveStatus, setAdaptiveStatus] = useState(() => {
+    const initialTier = PERF.safe2GB ? TIERS.length - 1 : (PERF.startTier >= 0 ? PERF.startTier : 1);
+    const initialGrid = TIERS[initialTier];
+    return { index: initialTier, label: tierName(initialTier, PERF.safe2GB), auto: PERF.autoTier, safeMode: PERF.safe2GB, fps: 0, memoryPressure: 0, particleRatio: 0, engineBytes: 0, heapUsedBytes: 0, particles: 0, particleBudget: PERF.budget.particleBudget, engineTier: { cols: initialGrid.cols, rows: initialGrid.rows } };
+  });
   const [gridDims, setGridDims] = useState({ cols: 480, rows: 270 }); // HOTFIX: live grid dims (canvas aspect + readouts)
   const aspectRef = useRef(16 / 9); const geomRef = useRef(null); // HOTFIX: viewport aspect + last render geometry (uniform scale + letterbox offsets)
   const [picker, setPicker] = useState(false);
@@ -491,6 +494,47 @@ export function MatterLab(props) {
     imgRef.current = off.getContext('2d').createImageData(eng.cols, eng.rows);
     depthRef.current = new Int16Array(eng.cols);
   };
+  const installAdaptiveController = (eng, initialIndex) => {
+    const device = deviceInfo();
+    const budget = resourceBudget(device);
+    safeModeRef.current = budget.safe2GB;
+    if (typeof eng.setWorldCellBudget === 'function') eng.setWorldCellBudget(budget.maxWorldCells);
+    if (typeof eng.setParticleBudget === 'function') eng.setParticleBudget(budget.particleBudget);
+    if (glRef.current?.setResourceProfile) glRef.current.setResourceProfile(budget);
+    const controller = createAdaptiveTiers(eng, loadPerf(), {
+      initialTierIndex: initialIndex,
+      safeMode: budget.safe2GB,
+      getDimensions: (index) => dimsForTier(index, aspectRef.current),
+      onTierChange: (index, change) => {
+        govRef.current.tierIndex = index;
+        setTierI(index);
+        if (engRef.current === eng) {
+          rebuildOff(eng);
+          setGridDims({ cols: eng.cols, rows: eng.rows });
+          const canvas = canvasRef.current;
+          try { if (canvas && typeof canvas.animate === 'function') canvas.animate([{ opacity: 0.72 }, { opacity: 1 }], { duration: change.transition.durationMs, easing: 'ease-out' }); } catch { /* optional visual crossfade */ }
+        }
+        setAdaptiveStatus(controller.snapshot(performance.now()));
+      },
+    });
+    adaptiveRef.current = controller;
+    setAdaptiveStatus(controller.snapshot(performance.now()));
+    return controller;
+  };
+  const setAdaptiveAuto = (enabled) => {
+    const controller = adaptiveRef.current;
+    if (!controller) return;
+    controller.setAuto(enabled);
+    setPerfStore(enabled ? { autoTier: true, startTier: -1 } : { autoTier: false, startTier: controller.currentIndex });
+    setAdaptiveStatus(controller.snapshot(performance.now()));
+  };
+  const selectAdaptiveTier = (index) => {
+    const controller = adaptiveRef.current;
+    if (!controller) return;
+    controller.setManualTier(index, performance.now());
+    setPerfStore({ autoTier: false, startTier: controller.currentIndex });
+    setAdaptiveStatus(controller.snapshot(performance.now()));
+  };
   const startLoop = () => { cancelAnimationFrame(rafRef.current); if (loopRef.current) rafRef.current = requestAnimationFrame(loopRef.current); };
   const handleSimError = (err, eng) => {
     // HARDEN A1: stop the loop, keep the scene, surface a resumable banner.
@@ -513,8 +557,13 @@ export function MatterLab(props) {
     const d0 = dimsForTier(tierI, aspectRef.current);
     try { eng = new MatterEngine(d0.cols, d0.rows); } catch (e2) { setConstructErr(String((e2 && e2.message) || e2)); return; }
     engRef.current = eng;
-    if (PERF.capParts > 0) eng.setMaxParts(PERF.capParts); wireEngine(eng);
+    const prefs = loadPerf();
+    if (prefs.capParts > 0) eng.setMaxParts(prefs.capParts);
+    wireEngine(eng);
+    installAdaptiveController(eng, tierI);
     if (scene) { try { eng.deserialize(scene); } catch { /* start empty rather than crash */ } }
+    const resetDims = dimsForTier(tierI, aspectRef.current);
+    if (eng.cols !== resetDims.cols || eng.rows !== resetDims.rows) eng.setTier(resetDims.cols, resetDims.rows);
     rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows });
     errStreakRef.current = 0; setSimError(null); setPaused(false); startLoop();
     toast('Engine reset — scene restored');
@@ -550,9 +599,11 @@ export function MatterLab(props) {
       setConstructErr(String((e2 && e2.message) || e2)); return undefined;
     }
     engRef.current = eng;
-    if (PERF.capParts > 0) eng.setMaxParts(PERF.capParts); // low-end: movement-duty cap
-    const snd = new MatterSound(); sndRef.current = (PERF.disableSound ? null : snd);
+    const prefs = loadPerf();
+    if (prefs.capParts > 0) eng.setMaxParts(prefs.capParts); // movement-duty cap, independent of the hard safe particle budget
+    const snd = new MatterSound(); sndRef.current = (prefs.disableSound ? null : snd);
     wireEngine(eng);
+    installAdaptiveController(eng, ti);
     rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows });
     /* P1: create the WebGL2 renderer once. If WebGL2 is unavailable or the
        context cannot be created (incl. --disable-3d-apis software gate),
@@ -560,13 +611,39 @@ export function MatterLab(props) {
        loss latches the P0 fallback + notice through the watchdog path. */
     try {
       const g = new GLRenderer(() => { fbRef.current = true; if (!wdRef.current.dismissed) setGfx('fallback'); try { window.__matterlab = window.__matterlab || {}; window.__matterlab.gfxFallback = true; } catch { /* noop */ } });
+      if (g && typeof g.setResourceProfile === 'function') g.setResourceProfile(resourceBudget(deviceInfo()));
       glRef.current = g && g.ok ? g : null;
     } catch { glRef.current = null; }
     let frames = 0, winT = performance.now(), acc = 0, lastT = performance.now(), lastStats = 0, lastGov = 0, lastAmb = 0;
+    let qualityFps = 0, lastQualityFrame = performance.now(), lastMemoryAt = 0, qualityMemory = null;
     const loop = (now) => {
       rafRef.current = requestAnimationFrame(loop);
       const e = engRef.current; if (!e) return;
       try {
+      const frameMs = now - lastQualityFrame;
+      lastQualityFrame = now;
+      if (frameMs > 0 && frameMs < 250) {
+        const instantFps = Math.min(120, 1000 / frameMs);
+        qualityFps = qualityFps ? qualityFps * 0.86 + instantFps * 0.14 : instantFps;
+      }
+      const liveStats = e.stats();
+      if (!qualityMemory || now - lastMemoryAt >= 1000) {
+        lastMemoryAt = now;
+        qualityMemory = measureMemory(e, glRef.current, deviceInfo());
+      }
+      const adaptive = adaptiveRef.current;
+      if (adaptive && !document.hidden) adaptive.update({
+        fps: qualityFps,
+        stepEmaMs: liveStats.emaMs,
+        particles: liveStats.particles,
+        particleBudget: qualityMemory?.particleBudget ?? liveStats.particleBudget,
+        particleRatio: qualityMemory?.particleRatio ?? liveStats.particleRatio,
+        memoryPressure: qualityMemory?.memoryPressure ?? 0,
+        heapUsedBytes: qualityMemory?.heapUsedBytes ?? 0,
+        engineBytes: qualityMemory?.engineBytes ?? 0,
+        cols: e.cols,
+        rows: e.rows,
+      }, now);
         if (!pausedRef.current) {
           // HARDEN B: tick-rate cap is ladder step 1-2 (60 -> 45 -> 30 ticks/s at 1x).
           const dtMs = Math.min(100, now - lastT); lastT = now;
@@ -614,7 +691,11 @@ export function MatterLab(props) {
       } catch (err) { handleSimError(err, e); return; }
       frames++;
       if (now - winT >= 500) { setFps(Math.round(frames * 1000 / (now - winT))); frames = 0; winT = now; }
-      if (now - lastStats > 500) { lastStats = now; setParts(e.stats().particles);
+      if (now - lastStats > 500) {
+        lastStats = now;
+        setParts(e.particles);
+        const tierSnapshot = adaptiveRef.current?.snapshot(now);
+        if (tierSnapshot) setAdaptiveStatus(tierSnapshot);
         const exId = expActiveRef.current; // V2 experiments: real objective check, same cadence
         if (exId) { try { const st = computeObjective(e, exId); const kk = (st.done ? '1' : '0') + '|' + st.detail; if (kk !== expStatusKeyRef.current) { expStatusKeyRef.current = kk; setExpStatus(st); } } catch { /* check is best-effort */ } }
         /* P4: star rating on the same cadence — extends the live objective
@@ -694,26 +775,19 @@ export function MatterLab(props) {
            Ladder order and all resolution rules below are unchanged. */
         const overload = ema > 17, healthy = ema < 10;
         if (overload) { gov.healthySince = 0; if (!gov.overSince) gov.overSince = now; } else if (healthy) { gov.overSince = 0; if (!gov.healthySince) gov.healthySince = now; } else { gov.overSince = 0; gov.healthySince = 0; }
-        if (gov.overSince && now - gov.overSince > 800) {
-          if (gov.ladderStep < 5) { gov.ladderStep += 1; e.applyGovernor(gov.ladderStep); gov.overSince = now; if (gov.ladderStep === 1) setTierNote('Load governor: tick rate 45/s to protect quality.'); if (gov.ladderStep === 3) setTierNote('Load governor: update radius reduced — resolution and colours untouched.'); }
-          else if (now - gov.overSince > 5000) {
-            const cur = gov.tierIndex;
-            const floorI = TIERS.length - 1; // lowest tier (smallest cell budget) is the floor
-            const maxDown = Math.min(floorI, gov.startTierIndex + 1); // at most ONE tier below session start
-            if (cur >= 0 && cur < maxDown && now - (gov.lastResChange || 0) > 10000) {
-              const nt = dimsForTier(cur + 1, aspectRef.current); e.resize(nt.cols, nt.rows); rebuildOff(e); setGridDims({ cols: e.cols, rows: e.rows });
-              gov.tierIndex = cur + 1; gov.lastResChange = now; gov.overSince = now;
-              setTierI(cur + 1); setTierNote('Load governor: one resolution step down (the floor) — scene preserved.');
-              toast('Stepped down one resolution tier (floor) to keep the sim smooth');
-            }
-          }
+        if (gov.overSince && now - gov.overSince > 800 && gov.ladderStep < 5) {
+          gov.ladderStep += 1;
+          e.applyGovernor(gov.ladderStep);
+          gov.overSince = now;
+          if (gov.ladderStep === 1) setTierNote('Load governor: tick rate 45/s to protect quality.');
+          if (gov.ladderStep === 3) setTierNote('Load governor: update radius reduced — adaptive tiers own resolution changes.');
         }
         if (gov.healthySince && now - gov.healthySince > 5000) {
-          if (gov.ladderStep > 2) { gov.ladderStep -= 1; e.applyGovernor(gov.ladderStep); gov.healthySince = now; }
-          else if (gov.ladderStep > 0) { gov.ladderStep -= 1; e.applyGovernor(gov.ladderStep); gov.healthySince = now; if (gov.ladderStep === 0) setTierNote(''); }
-          else if (gov.tierIndex > gov.startTierIndex && now - (gov.lastResChange || 0) > 10000) {
-            const cur = gov.tierIndex;
-            if (cur > gov.startTierIndex) { const nt = dimsForTier(cur - 1, aspectRef.current); e.resize(nt.cols, nt.rows); rebuildOff(e); setGridDims({ cols: e.cols, rows: e.rows }); gov.tierIndex = cur - 1; gov.lastResChange = now; setTierI(cur - 1); }
+          if (gov.ladderStep > 0) {
+            gov.ladderStep -= 1;
+            e.applyGovernor(gov.ladderStep);
+            gov.healthySince = now;
+            if (gov.ladderStep === 0) setTierNote('');
           }
         }
         try { if (window.__matterlab) { window.__matterlab.tickRate = gov.tickRate; window.__matterlab.ladderStep = gov.ladderStep; window.__matterlab.tierIndex = gov.tierIndex; window.__matterlab.startTierIndex = gov.startTierIndex; window.__matterlab.gov = gov; } } catch { /* noop */ }
@@ -819,7 +893,7 @@ export function MatterLab(props) {
     const depth = depthRef.current && depthRef.current.length === cols ? depthRef.current : (depthRef.current = new Int16Array(cols));
     const hot = hotRef.current; hot.length = 0;
     const hotBands = hotBandRef.current; hotBands.fill(0);
-    const texOn = textureOnRef.current && vm === 'normal'; // W32U-5: texture is Normal-view only
+    const texOn = textureOnRef.current && vm === 'normal' && !safeModeRef.current; // v23: texture path stays off on the 2GB profile
     /* P1 — WebGL2 primary path: pack the engine state into GL textures and
        shade the whole world on the GPU into the renderer's own canvas; the
        present step below then composites THAT canvas with the same
@@ -839,8 +913,8 @@ export function MatterLab(props) {
         if (glr.tablesVer !== RENDER_VER) glr.setTables(buildGLTables(SUBSTANCES, COLS, TEX_TYPE, TEX_AMP, CLSARR, ISSMOKE, GLASS_ID, LUT), RENDER_VER);
         let q = texQualityRef.current === 'low' ? 0 : texQualityRef.current === 'med' ? 1 : 2; // 'auto' and 'high' start at High
         if (govRef.current.ladderStep >= 3) q = Math.min(q, 1); // load-governor auto-drop (same spirit as the glow-pass gate)
-        if (govRef.current.ladderStep >= 5) q = 0;
-        glWorld = !!glr.draw(e, { view: vm === 'heat' ? 1 : vm === 'pressure' ? 2 : 0, quality: q, texOn: textureOnRef.current, now }, hotBands);
+        if (govRef.current.ladderStep >= 5 || safeModeRef.current) q = 0;
+        glWorld = !!glr.draw(e, { view: vm === 'heat' ? 1 : vm === 'pressure' ? 2 : 0, quality: q, texOn: texOn, now }, hotBands);
         if (!glWorld) { fbRef.current = true; if (!wdRef.current.dismissed) setGfx('fallback'); }
       } catch { fbRef.current = true; glFallbackShown.current = true; if (!wdRef.current.dismissed) setGfx('fallback'); glWorld = false; }
     }
@@ -1878,7 +1952,32 @@ export function MatterLab(props) {
       gov: govRef.current, lastError: null,
       /* Matter Lab Ultra: perf surface for the low-end pipeline */
       perf: { deviceSummary: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, setCapParts: applyPerfCap },
-      perfStats: () => { const st = e.stats(); let memMB = 0; try { if (typeof navigator !== 'undefined' && navigator.deviceMemory) memMB = navigator.deviceMemory * 1024; } catch {} return { memMB, parts: st.particles, emaMs: st.emaMs, tier: st.tier, grid: `${e.cols}x${e.rows}` }; },
+      adaptive: () => adaptiveRef.current?.snapshot(performance.now()) || null,
+      setAdaptiveAuto,
+      setAdaptiveTier: selectAdaptiveTier,
+      simulateDevice: (profile) => {
+        const device = setSimulatedDevice(profile);
+        const budget = resourceBudget(device);
+        safeModeRef.current = budget.safe2GB;
+        if (typeof e.setWorldCellBudget === 'function') e.setWorldCellBudget(budget.maxWorldCells);
+        if (typeof e.setParticleBudget === 'function') e.setParticleBudget(budget.particleBudget);
+        if (glRef.current?.setResourceProfile) glRef.current.setResourceProfile(budget);
+        const status = adaptiveRef.current?.setDeviceProfile(device, performance.now()) || null;
+        if (status) setAdaptiveStatus(status);
+        return { device, budget, status };
+      },
+      clearDeviceSimulation: () => {
+        const device = setSimulatedDevice(null);
+        const budget = resourceBudget(device);
+        safeModeRef.current = budget.safe2GB;
+        if (typeof e.setWorldCellBudget === 'function') e.setWorldCellBudget(budget.maxWorldCells);
+        if (typeof e.setParticleBudget === 'function') e.setParticleBudget(budget.particleBudget);
+        if (glRef.current?.setResourceProfile) glRef.current.setResourceProfile(budget);
+        const status = adaptiveRef.current?.setDeviceProfile(device, performance.now()) || null;
+        if (status) setAdaptiveStatus(status);
+        return { device, budget, status };
+      },
+      perfStats: () => { const st = e.stats(); const memory = measureMemory(e, glRef.current, deviceInfo()); return { ...st, ...memory, grid: `${e.cols}x${e.rows}` }; },
       get tickRate() { return govRef.current.tickRate; }, get ladderStep() { return govRef.current.ladderStep; },
       get tierIndex() { return govRef.current.tierIndex; }, get startTierIndex() { return govRef.current.startTierIndex; },
       place: (key, x, y, r = 3) => e.paint(x, y, r, (BY_KEY.get(key) || {}).id || 0),
@@ -1900,7 +1999,7 @@ export function MatterLab(props) {
       gfx: () => ({ fallback: fbRef.current, notice: gfxNoticeRef.current, envSimple: RISKY_PRESENT_UA }),
       sabotagePresent: (b) => { sabotageRef.current = !!b; return true; },
       /* P1/P2 additions: renderer state + bench/fault-injection levers */
-      gl: () => ({ renderer: glRef.current && glEnabledRef.current && !fbRef.current ? 'webgl2' : '2d', glAvailable: !!glRef.current, enabled: glEnabledRef.current, texQuality: texQualityRef.current, ladderStep: govRef.current.ladderStep }),
+      gl: () => ({ renderer: glRef.current && glEnabledRef.current && !fbRef.current ? glRef.current.mode : '2d', glAvailable: !!glRef.current, enabled: glEnabledRef.current, texQuality: texQualityRef.current, ladderStep: govRef.current.ladderStep }),
       setGLRenderer: (b) => { glEnabledRef.current = !!b; },
       setTexQuality: (q) => { if (['auto', 'low', 'med', 'high'].includes(q)) setTexQualityQ(q); },
       sabotageGL: (b) => { if (glRef.current) { glRef.current.sabotage = !!b; return true; } return false; },
@@ -2139,7 +2238,7 @@ export function MatterLab(props) {
           </div>
         )}
         {/* expanded side panel: ALL tools + sim controls (never overlaps the bottom panel — mutual exclusion) */}
-        <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedI} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} perf={{ device: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, applyCap: applyPerfCap }} power={powerOn} setPower={applyPower} />
+        <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedI} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} perf={{ device: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, applyCap: applyPerfCap, adaptive: { ...adaptiveStatus, setAuto: setAdaptiveAuto, setTier: selectAdaptiveTier } }} power={powerOn} setPower={applyPower} />
       </div>
 
       {/* selected-substance bar (opens the bottom tile panel) — shown in
@@ -2385,8 +2484,6 @@ export function MatterLab(props) {
           />
         );
       })()}
-      <GlassShell open={glass} setGlass={setGlass} />
-    </div>
       <GlassShell open={glass} setGlass={setGlass} />
     </div>
   );

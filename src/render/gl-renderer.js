@@ -2,8 +2,9 @@
  * Matter Lab v3 P1+P2 — WebGL2 cell-world renderer.
  *
  * Renders the engine's per-cell state (el id, temp, aux/variant, tint) into
- * an offscreen WebGL2 canvas at grid resolution. sandlab.jsx composites that
- * canvas onto the visible 2D canvas with the exact same letterbox drawImage
+ * an offscreen WebGL2 canvas at grid resolution, with an ES 1.00 WebGL1
+ * renderer as the compatibility fallback. sandlab.jsx composites the active
+ * GPU canvas onto the visible 2D canvas with the exact same letterbox drawImage
  * as the P0 2D path, so pointer mapping, gear/flame/meniscus overlays and
  * the P0 render watchdog (which samples the visible canvas) are untouched.
  *
@@ -22,9 +23,9 @@
  * Quality: 0 Low = flat LUT + jitter, 1 Med = texture, no normal/specular,
  * 2 High = full (normal perturbation from the texture height + specular).
  *
- * Failure contract: if WebGL2 is unavailable, context creation fails, the
- * context is lost, or a draw throws, `ok` goes false and the caller stays on
- * (or latches into) the P0 plain-2D fallback + watchdog notice. Nothing here
+ * Fallback contract: probe WebGL2, then WebGL1, then let sandlab use its
+ * plain 2D renderer. Context loss, shader failure or a draw error latches the
+ * caller into the P0 plain-2D fallback + watchdog notice. Nothing here
  * ever touches the visible canvas directly.
  */
 
@@ -233,6 +234,70 @@ void main() {
   fragColor = vec4(clamp(col, 0.0, 255.0) / 255.0, 1.0);
 }`;
 
+// WebGL1 fallback: a deliberately reduced, nearest-sampled cell renderer.
+// It preserves substance colour, heat/pressure views and tint without GLSL
+// ES 3.00 features. The 2D renderer remains the final compatibility path.
+const VERT1 = `
+attribute vec2 aPosition;
+varying vec2 vUv;
+void main() {
+  vUv = aPosition * 0.5 + 0.5;
+  gl_Position = vec4(aPosition, 0.0, 1.0);
+}`;
+const FRAG1 = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying vec2 vUv;
+uniform sampler2D uData0;
+uniform sampler2D uData1;
+uniform sampler2D uLut;
+uniform sampler2D uPress;
+uniform vec2 uLutSize;
+uniform vec2 uPressSize;
+uniform float uView;
+vec3 heat(float t) {
+  if (t < 20.0) return mix(vec3(0.14,0.34,0.78), vec3(0.07,0.08,0.12), clamp((t+100.0)/120.0,0.0,1.0));
+  if (t < 200.0) return mix(vec3(0.07,0.08,0.12), vec3(0.94,0.54,0.14), (t-20.0)/180.0);
+  if (t < 600.0) return mix(vec3(0.94,0.54,0.14), vec3(0.88,0.23,0.18), (t-200.0)/400.0);
+  return mix(vec3(0.88,0.23,0.18), vec3(1.0), clamp((t-600.0)/600.0,0.0,1.0));
+}
+void main() {
+  vec2 uv = vec2(vUv.x, 1.0-vUv.y);
+  vec4 d0 = texture2D(uData0, uv);
+  vec4 d1 = texture2D(uData1, uv);
+  float id = floor(d0.r*255.0+0.5) + floor(d0.g*255.0+0.5)*256.0;
+  if (uView > 0.5 && uView < 1.5) {
+    float tv = floor(d1.r*255.0+0.5) + floor(d1.g*255.0+0.5)*256.0;
+    float temp = tv*0.25-256.0;
+    gl_FragColor = vec4(id < 0.5 ? vec3(0.04,0.047,0.07) : heat(temp), 1.0);
+    return;
+  }
+  if (uView > 1.5) {
+    vec2 puv = floor(uv*uPressSize)/max(uPressSize,vec2(1.0));
+    float p = texture2D(uPress, puv).r*8.0;
+    vec3 c = p < 0.5 ? mix(vec3(0.04,0.08,0.31),vec3(0.08,0.63,0.67),p/0.5)
+      : p < 2.0 ? mix(vec3(0.08,0.63,0.67),vec3(0.94,0.82,0.24),(p-0.5)/1.5)
+      : mix(vec3(0.94,0.82,0.24),vec3(0.88,0.23,0.18),clamp((p-2.0)/3.0,0.0,1.0));
+    gl_FragColor = vec4(c,1.0);
+    return;
+  }
+  if (id < 0.5) { gl_FragColor = vec4(0.04,0.047,0.07,1.0); return; }
+  float aux = floor(d0.b*255.0+0.5);
+  float index = id*4.0 + mod(aux,4.0);
+  vec2 lutCoord = (vec2(mod(index,uLutSize.x),floor(index/uLutSize.x))+0.5)/uLutSize;
+  vec3 col = texture2D(uLut,lutCoord).rgb;
+  vec3 tint = vec3(d0.a,d1.b,d1.a);
+  if (max(max(tint.r,tint.g),tint.b) > 0.003) col = mix(col,tint,0.35);
+  float tv = floor(d1.r*255.0+0.5) + floor(d1.g*255.0+0.5)*256.0;
+  float temp = tv*0.25-256.0;
+  if (temp > 600.0) col = mix(col,vec3(1.0,0.3,0.05),min(0.65,(temp-600.0)/1400.0));
+  else if (temp < 0.0) col = mix(col,vec3(0.46,0.66,1.0),0.25);
+  gl_FragColor = vec4(clamp(col,0.0,1.0),1.0);
+}`;
+
 /* Build the per-substance meta textures' backing arrays from sandlab's
    existing render tables (COLS ramps, TEX_TYPE/TEX_AMP pattern choice,
    CLSARR class codes, ISSMOKE). Pattern family therefore stays exactly the
@@ -296,25 +361,62 @@ export class GLRenderer {
     this.lost = false;
     this.sabotage = false;
     this.tablesVer = -1;
+    this.mode = 'none';
+    this.fallback = null;
+    this.resourceProfile = { maxWorldTextureDimension: 2048, maxWorldCells: Infinity, maxTextureQuality: 2 };
     this.onLost = onLost || null;
     this.canvas = document.createElement('canvas');
     let gl = null;
     try {
       gl = this.canvas.getContext('webgl2', { alpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'high-performance' });
     } catch { gl = null; }
-    if (!gl) { this.gl = null; return; } // WebGL2 unavailable (incl. --disable-3d-apis) -> seamless 2D
+    if (!gl) { this.gl = null; this._tryWebGL1(); return; }
     this.gl = gl;
+    this.mode = 'webgl2';
     this.canvas.addEventListener('webglcontextlost', (ev) => {
       ev.preventDefault();
       this.ok = false; this.lost = true;
       if (this.onLost) { try { this.onLost(); } catch { /* noop */ } }
     });
     this.canvas.addEventListener('webglcontextrestored', () => {
-      // Rebuild every GL object; the caller stays on the latched 2D fallback
-      // for the session, so this only matters if the latch is ever lifted.
       try { this._initGL(); this.ok = true; this.lost = false; this.tablesVer = -1; this._gridKey = ''; } catch { this.ok = false; }
     });
-    try { this._initGL(); this.ok = true; } catch { this.ok = false; this.gl = null; }
+    try { this._initGL(); this.ok = true; }
+    catch { this.ok = false; this.gl = null; this.mode = 'none'; this._tryWebGL1(); }
+  }
+
+  _tryWebGL1() {
+    try {
+      const renderer = new WebGL1Renderer(this.onLost);
+      if (!renderer.ok) return;
+      renderer.setResourceProfile(this.resourceProfile);
+      this.fallback = renderer;
+      this.canvas = renderer.canvas;
+      this.gl = renderer.gl;
+      this.mode = 'webgl1';
+      this.ok = true;
+    } catch { this.fallback = null; this.gl = null; this.mode = 'none'; this.ok = false; }
+  }
+
+  setResourceProfile(profile = {}) {
+    const hardwareMax = (() => { try { return this.gl?.getParameter(this.gl.MAX_TEXTURE_SIZE) || 2048; } catch { return 2048; } })();
+    this.resourceProfile = {
+      maxWorldTextureDimension: Math.max(64, Math.min(hardwareMax, Number(profile.maxWorldTextureDimension) || 2048)),
+      maxWorldCells: Math.max(1, Number(profile.maxWorldCells) || Infinity),
+      maxTextureQuality: Math.max(0, Math.min(2, Number(profile.maxTextureQuality) || 0)),
+    };
+    if (this.fallback) this.fallback.setResourceProfile(this.resourceProfile);
+  }
+
+  get estimatedBytes() {
+    if (this.fallback) return this.fallback.estimatedBytes;
+    let bytes = 0;
+    for (const key of ['buf0', 'buf1', 'buf2', 'glowBuf', 'glowAcc', 'pressBuf', 'depthRun']) {
+      const value = this[key];
+      if (ArrayBuffer.isView(value)) bytes += value.byteLength;
+    }
+    if (this.tables) bytes += (this.tables.lutTex?.byteLength || 0) + (this.tables.metaC?.byteLength || 0);
+    return bytes;
   }
 
   _initGL() {
@@ -349,6 +451,7 @@ export class GLRenderer {
   setTables(tables, ver) {
     this.tables = tables;
     this.tablesVer = ver;
+    if (this.fallback) { this.fallback.setTables(tables, ver); return; }
     if (this.ok) this._uploadTables();
   }
 
@@ -365,11 +468,17 @@ export class GLRenderer {
       Returns false if the GL path cannot present (caller uses 2D). */
   draw(e, opts, hotBands) {
     if (!this.ok || this.lost) return false;
+    if (this.fallback) return this.fallback.draw(e, opts, hotBands);
     const gl = this.gl;
     if (!gl) { this.ok = false; return false; }
     const T0 = performance.now();
     const { cols, rows, el, temp, aux, tint } = e;
     const n = cols * rows;
+    const cap = this.resourceProfile || {};
+    if (cols > (cap.maxWorldTextureDimension || 2048) || rows > (cap.maxWorldTextureDimension || 2048) || n > (cap.maxWorldCells || Infinity)) {
+      this._lastError = new Error(`world texture ${cols}x${rows} exceeds active resource profile`);
+      return false;
+    }
     const key = cols + 'x' + rows;
     try {
     if (this._gridKey !== key || !this.buf0 || this.buf0.length !== n * 4) {
@@ -494,8 +603,8 @@ export class GLRenderer {
     gl.uniform1i(this.u.uGlowOn, glowOn);
     gl.uniform2i(this.u.uGrid, cols, rows);
     gl.uniform1i(this.u.uView, opts.view | 0);
-    gl.uniform1i(this.u.uQuality, opts.quality | 0);
-    gl.uniform1i(this.u.uTexOn, opts.texOn ? 1 : 0);
+    gl.uniform1i(this.u.uQuality, Math.min(cap.maxTextureQuality ?? 2, Math.max(0, Math.min(2, opts.quality | 0))));
+    gl.uniform1i(this.u.uTexOn, opts.texOn && (cap.maxTextureQuality ?? 2) > 0 ? 1 : 0);
     gl.uniform1i(this.u.uTick, e.tick | 0);
     gl.uniform1i(this.u.uGlassId, this.glassId != null ? this.glassId : -1);
     gl.uniform1i(this.u.uSabotage, this.sabotage ? 1 : 0);
@@ -509,7 +618,185 @@ export class GLRenderer {
   }
 
   dispose() {
-    if (this.gl) { try { const ext = this.gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); } catch { /* noop */ } }
+    if (this.fallback) this.fallback.dispose();
+    else if (this.gl) { try { const ext = this.gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); } catch { /* noop */ } }
+    this.ok = false;
+  }
+}
+
+/* WebGL1 compatibility renderer. It intentionally exposes the same small
+   surface as GLRenderer so callers can keep one GL2 → GL1 → Canvas2D policy.
+   The ES 1.00 shader trades procedural detail for a broad device baseline. */
+class WebGL1Renderer {
+  constructor(onLost) {
+    this.ok = false;
+    this.lost = false;
+    this.mode = 'webgl1';
+    this.onLost = onLost || null;
+    this.tables = null;
+    this.tablesVer = -1;
+    this.resourceProfile = { maxWorldTextureDimension: 2048, maxWorldCells: Infinity, maxTextureQuality: 0 };
+    for (const kind of ['webgl', 'experimental-webgl']) {
+      const canvas = document.createElement('canvas');
+      let gl = null;
+      try { gl = canvas.getContext(kind, { alpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' }); } catch { gl = null; }
+      if (!gl) continue;
+      this.canvas = canvas;
+      this.gl = gl;
+      try {
+        this._init();
+        this.ok = true;
+        canvas.addEventListener('webglcontextlost', (event) => {
+          event.preventDefault(); this.ok = false; this.lost = true;
+          if (this.onLost) { try { this.onLost(); } catch { /* noop */ } }
+        });
+        canvas.addEventListener('webglcontextrestored', () => {
+          try { this._init(); this.ok = true; this.lost = false; } catch { this.ok = false; }
+        });
+        break;
+      } catch { this.ok = false; this.gl = null; this.canvas = null; }
+    }
+  }
+
+  setResourceProfile(profile = {}) {
+    const hardwareMax = (() => { try { return this.gl?.getParameter(this.gl.MAX_TEXTURE_SIZE) || 2048; } catch { return 2048; } })();
+    this.resourceProfile = {
+      maxWorldTextureDimension: Math.max(64, Math.min(hardwareMax, Number(profile.maxWorldTextureDimension) || 2048)),
+      maxWorldCells: Math.max(1, Number(profile.maxWorldCells) || Infinity),
+      maxTextureQuality: 0,
+    };
+  }
+
+  get estimatedBytes() {
+    let bytes = 0;
+    for (const key of ['buf0', 'buf1', 'pressBuf']) if (ArrayBuffer.isView(this[key])) bytes += this[key].byteLength;
+    if (this.tables) bytes += (this.tables.lutTex?.byteLength || 0) + (this.tables.metaC?.byteLength || 0);
+    return bytes;
+  }
+
+  _texture(name) {
+    const gl = this.gl;
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.tex[name] = texture;
+  }
+
+  _init() {
+    const gl = this.gl;
+    const program = gl.createProgram();
+    gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERT1));
+    gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, FRAG1));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('webgl1 link: ' + gl.getProgramInfoLog(program));
+    this.program = program;
+    this.aPosition = gl.getAttribLocation(program, 'aPosition');
+    this.u = {};
+    for (const name of ['uData0', 'uData1', 'uLut', 'uPress', 'uLutSize', 'uPressSize', 'uView']) this.u[name] = gl.getUniformLocation(program, name);
+    this.vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    this.tex = {};
+    for (const name of ['data0', 'data1', 'lut', 'press']) this._texture(name);
+    this.dimensions = {};
+    this.gridKey = '';
+    this.pressKey = '';
+    this.buf0 = null; this.buf1 = null; this.pressBuf = null;
+    if (this.tables) this._uploadTables();
+  }
+
+  setTables(tables, ver) {
+    this.tables = tables;
+    this.tablesVer = ver;
+    if (this.ok) this._uploadTables();
+  }
+
+  _uploadTables() {
+    if (!this.tables || !this.gl) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.tex.lut);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.tables.lutW, this.tables.lutH, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.tables.lutTex);
+    this.dimensions.lut = `${this.tables.lutW}x${this.tables.lutH}`;
+  }
+
+  _allocate(name, width, height) {
+    const key = `${width}x${height}`;
+    if (this.dimensions[name] === key) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.tex[name]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    this.dimensions[name] = key;
+  }
+
+  draw(engine, opts = {}) {
+    if (!this.ok || this.lost || !this.gl) return false;
+    const gl = this.gl;
+    const { cols, rows, el, aux, tint, temp } = engine;
+    const count = cols * rows;
+    const cap = this.resourceProfile;
+    if (cols > cap.maxWorldTextureDimension || rows > cap.maxWorldTextureDimension || count > cap.maxWorldCells) return false;
+    try {
+      const key = `${cols}x${rows}`;
+      if (this.gridKey !== key || !this.buf0) {
+        this.gridKey = key;
+        this.buf0 = new Uint8Array(count * 4);
+        this.buf1 = new Uint8Array(count * 4);
+        this.canvas.width = cols; this.canvas.height = rows;
+        this._allocate('data0', cols, rows); this._allocate('data1', cols, rows);
+      }
+      const d0 = this.buf0, d1 = this.buf1;
+      for (let i = 0, o = 0; i < count; i++, o += 4) {
+        const id = el[i], tintValue = tint[i];
+        d0[o] = id & 255; d0[o + 1] = id >> 8; d0[o + 2] = aux[i]; d0[o + 3] = tintValue >>> 16 & 255;
+        let tv = Math.max(0, Math.min(65535, ((temp[i] + 256) * 4) | 0));
+        d1[o] = tv & 255; d1[o + 1] = tv >>> 8; d1[o + 2] = tintValue >>> 8 & 255; d1[o + 3] = tintValue & 255;
+      }
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.bindTexture(gl.TEXTURE_2D, this.tex.data0);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, d0);
+      gl.bindTexture(gl.TEXTURE_2D, this.tex.data1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, d1);
+      if (opts.view === 2) {
+        const pw = Math.max(1, Math.ceil(cols / 4)), ph = Math.max(1, Math.ceil(rows / 4));
+        const pkey = `${pw}x${ph}`;
+        if (this.pressKey !== pkey || !this.pressBuf) {
+          this.pressKey = pkey; this.pressBuf = new Uint8Array(pw * ph * 4); this._allocate('press', pw, ph);
+        }
+        for (let y = 0, o = 0; y < ph; y++) for (let x = 0; x < pw; x++, o += 4) {
+          let value = 0;
+          try { value = engine.pressureAt(Math.min(cols - 1, x * 4), Math.min(rows - 1, y * 4)) || 0; } catch { /* no pressure API */ }
+          this.pressBuf[o] = Math.max(0, Math.min(255, Math.round(value / 8 * 255)));
+        }
+        gl.bindTexture(gl.TEXTURE_2D, this.tex.press);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, pw, ph, gl.RGBA, gl.UNSIGNED_BYTE, this.pressBuf);
+      }
+      gl.useProgram(this.program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+      gl.enableVertexAttribArray(this.aPosition);
+      gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 0, 0);
+      const bind = (unit, name, uniform) => {
+        gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, this.tex[name]); gl.uniform1i(this.u[uniform], unit);
+      };
+      bind(0, 'data0', 'uData0'); bind(1, 'data1', 'uData1'); bind(2, 'lut', 'uLut'); bind(3, 'press', 'uPress');
+      gl.uniform2f(this.u.uLutSize, this.tables?.lutW || 2048, this.tables?.lutH || 1);
+      gl.uniform2f(this.u.uPressSize, Math.max(1, Math.ceil(cols / 4)), Math.max(1, Math.ceil(rows / 4)));
+      gl.uniform1f(this.u.uView, opts.view || 0);
+      gl.viewport(0, 0, cols, rows);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      return true;
+    } catch (error) {
+      this.lastError = error;
+      this.ok = false;
+      if (this.onLost) { try { this.onLost(); } catch { /* noop */ } }
+      return false;
+    }
+  }
+
+  dispose() {
+    try { const ext = this.gl?.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); } catch { /* noop */ }
     this.ok = false;
   }
 }
