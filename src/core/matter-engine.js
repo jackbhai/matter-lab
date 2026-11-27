@@ -102,6 +102,12 @@ export class MatterEngine {
     // low-end devices — movement runs at reduced duty while the reaction
     // pass stays full-rate (the movement cap is the cheaper of the two).
     this.maxParts = 0;
+    // v23: a hard creation ceiling for constrained devices. Unlike maxParts,
+    // which only throttles movement, this prevents new cells from consuming
+    // more world storage once the safe particle budget has been reached.
+    this.maxWorldParticles = 0;
+    this.maxWorldCells = 0;
+    this.particleBudgetHits = 0;
     this._mvCount = 0;
     this._powered = new Set(); // gear object ids carrying charge last electric pass (reused)
     // internal scratch (not part of the contract surface)
@@ -306,6 +312,10 @@ export class MatterEngine {
   /** Low-level cell write. keepTemp preserves temperature (conversions). */
   _write(i, id, keepTemp) {
     const old = this.el[i];
+    if (old === 0 && id !== 0 && this.maxWorldParticles > 0 && this.particles >= this.maxWorldParticles) {
+      this.particleBudgetHits++;
+      return false;
+    }
     // W32U-5: every write dirties its chunk halo + keeps _chDyn exact. Done
     // BEFORE the id===0 early-return below so clears are counted too.
     this._dirtyChunkFor(i);
@@ -322,7 +332,7 @@ export class MatterEngine {
     // airO2 bookkeeping: a fresh empty cell is air (0.21) UNLESS it sits in an
     // enclosed pocket (region >= 0) — sealed interiors get no free oxygen.
     this.airO2[i] = id === 0 ? (this._region && this._region[i] >= 0 ? 0 : 0.21) : 0;
-    if (id === 0) { this.life[i] = 0; this.aux[i] = 0; this.ph[i] = 255; this.mix[i] = 0; this.pol[i] = 0; this._solute[i] = 0; this.tint[i] = 0; return; }
+    if (id === 0) { this.life[i] = 0; this.aux[i] = 0; this.ph[i] = 255; this.mix[i] = 0; this.pol[i] = 0; this._solute[i] = 0; this.tint[i] = 0; return true; }
     this.aux[i] = (this._rng() * 4) | 0; // variant bits only
     this.mix[i] = 0; this.pol[i] = 0; this._solute[i] = 0; this.tint[i] = 0;
     if (rec.lifeSpan != null) {
@@ -349,18 +359,20 @@ export class MatterEngine {
     this._act[i] = this.tick;
     this._band[i] = ((this.temp[i] + 273) / 25) | 0;
     if (rec.cls === 'gas') this._sealedDirty = true;
+    return true;
   }
 
   set(x, y, idOrKey, opts) {
-    if (!this._in(x, y)) return;
+    if (!this._in(x, y)) return false;
     const i = y * this.cols + x;
     const id = this._resolve(idOrKey);
-    this._write(i, id, false);
+    if (!this._write(i, id, false)) return false;
     if (id !== 0) {
       if (opts && opts.temp != null) this.temp[i] = opts.temp;
       if (opts && opts.life != null) this.life[i] = opts.life;
       this._act[i] = this.tick;
     }
+    return true;
   }
 
   clear() {
@@ -432,6 +444,43 @@ export class MatterEngine {
   setMaxParts(n) {
     this.maxParts = Math.max(0, n | 0);
     this._mvCount = 0;
+  }
+
+  /** v23: hard cap on total non-empty cells (0 = unlimited). This is an
+      allocation/emission ceiling, distinct from setMaxParts' movement duty. */
+  setParticleBudget(n) {
+    this.maxWorldParticles = Math.max(0, Number.isFinite(Number(n)) ? Math.floor(Number(n)) : 0);
+    if (this.maxWorldParticles > 0) {
+      // Device-profile changes can arrive after a scene has been populated.
+      // Recount first, then discard excess cells (and any object owning them)
+      // so the budget is a real ceiling, not just a limit on future writes.
+      let actual = 0;
+      for (let i = 0; i < this.el.length; i++) if (this.el[i] !== 0) actual++;
+      this.particles = actual;
+      for (let i = this.el.length - 1; i >= 0 && this.particles > this.maxWorldParticles; i--) {
+        if (this.el[i] === 0) continue;
+        const objectId = this.objMap[i];
+        const object = objectId ? this.objects.get(objectId) : null;
+        if (object) {
+          object.locked = false; // the hard safety budget takes precedence over an object lock
+          this.removeObject(objectId);
+        } else {
+          if (objectId) this.objMap[i] = 0;
+          this._write(i, 0, false);
+        }
+      }
+    }
+    return this.maxWorldParticles;
+  }
+
+  /** v23: maximum grid cell budget. All future resizes (including scene loads)
+      are scaled down before typed-array allocation when they exceed this cap. */
+  setWorldCellBudget(n) {
+    const requested = Number(n);
+    const cells = Number.isFinite(requested) ? Math.max(0, Math.floor(requested)) : 0;
+    this.maxWorldCells = cells > 0 ? Math.max(64, cells) : 0;
+    if (this.maxWorldCells > 0 && this.cols * this.rows > this.maxWorldCells) this.resize(this.cols, this.rows);
+    return this.maxWorldCells;
   }
 
   /** W32U-6: ambient (room) temperature control, clamped -30..60 C. Every
@@ -506,7 +555,7 @@ export class MatterEngine {
     this._brush(cx, cy, r, shape, (x, y, i) => {
       if (this.objMap[i] !== 0 || this.bodyMap[i] !== 0) return; // gear/body cells are managed elsewhere
       if (density < 1 && this._rng() >= density) return;
-      this._write(i, id, false);
+      if (!this._write(i, id, false)) return;
       if (opts.temp != null) this.temp[i] = opts.temp;
       else { const st = this._spawnTempFor(id); if (st != null) this.temp[i] = st; }
     });
@@ -2310,6 +2359,10 @@ export class MatterEngine {
       if (this.el[i] !== 0 || set.has(i)) { if (!set.has(i)) return null; continue; }
       set.add(i); abs.push([i, id]);
     }
+    if (this.maxWorldParticles > 0 && this.particles + abs.length > this.maxWorldParticles) {
+      this.particleBudgetHits++;
+      return null;
+    }
     const objId = this._nextObj++;
     const idxArr = new Int32Array(abs.length);
     for (let c = 0; c < abs.length; c++) {
@@ -2574,6 +2627,19 @@ export class MatterEngine {
       if (this.el[t] !== 0 && !ownStamp.has(t) && !ownInt.has(t)) return null;
       seen.add(t); scells.push([t, id]);
     }
+    if (this.maxWorldParticles > 0) {
+      const removedStamp = new Set();
+      for (let c = 0; c < obj.cells.length; c++) {
+        const i = obj.cells[c];
+        if (this.objMap[i] === objId && this.el[i] === obj.stampIds[c]) removedStamp.add(i);
+      }
+      let addedStamp = 0;
+      for (const [i] of scells) if (this.el[i] === 0 || removedStamp.has(i)) addedStamp++;
+      if (this.particles - removedStamp.size + addedStamp > this.maxWorldParticles) {
+        this.particleBudgetHits++;
+        return null;
+      }
+    }
     // remove the old stamp + interior bookkeeping
     for (let c = 0; c < obj.cells.length; c++) {
       const i = obj.cells[c];
@@ -2728,6 +2794,9 @@ export class MatterEngine {
     if (tier < 0) tier = gov.tierIndex; // aspect-matched grids are not literal TIERS entries — report the governor's tier
     return {
       particles: this.particles, fps: 0, tier, cols: this.cols, rows: this.rows,
+      particleBudget: this.maxWorldParticles,
+      particleBudgetHits: this.particleBudgetHits,
+      particleRatio: this.particles / Math.max(1, this.maxWorldParticles || Math.floor(this.cols * this.rows * 0.92)),
       ladder: this.ladder, suggestTierDown: gov.ladderStep >= 5 && this._emaMs > 26,
       emaMs: Math.round(this._emaMs * 100) / 100, anyHot: this._anyHot,
       tickRate: gov.tickRate, ladderStep: gov.ladderStep,
@@ -2822,24 +2891,32 @@ export class MatterEngine {
     // HARDEN caps: reject oversized scenes (UI also checks the raw byte length > 8 MB)
     if (!Number.isFinite(data.cols) || !Number.isFinite(data.rows) || data.cols < 1 || data.rows < 1 || data.cols > 1024 || data.rows > 1024 || data.cols * data.rows > 200000) return false;
     if (typeof data.el === 'string' && data.el.length > 8 * 1024 * 1024) return false;
-    if (data.cols !== this.cols || data.rows !== this.rows) this.resize(data.cols | 0, data.rows | 0);
+    const sourceCols = Math.max(1, data.cols | 0), sourceRows = Math.max(1, data.rows | 0);
+    if (sourceCols !== this.cols || sourceRows !== this.rows) this.resize(sourceCols, sourceRows);
     const n = this.cols * this.rows;
     try {
       const elBytes = b64decode(data.el);
       const tBytes = data.temp ? b64decode(data.temp) : null;
-      const elView = new Uint16Array(elBytes.buffer, elBytes.byteOffset, Math.min(n, elBytes.byteLength / 2));
-      const tView = tBytes ? new Int16Array(tBytes.buffer, tBytes.byteOffset, Math.min(n, tBytes.byteLength / 2)) : null;
+      const sourceCells = sourceCols * sourceRows;
+      const elView = new Uint16Array(elBytes.buffer, elBytes.byteOffset, Math.min(sourceCells, Math.floor(elBytes.byteLength / 2)));
+      const tView = tBytes ? new Int16Array(tBytes.buffer, tBytes.byteOffset, Math.min(sourceCells, Math.floor(tBytes.byteLength / 2))) : null;
       this.clear();
       let count = 0;
       for (let i = 0; i < n; i++) {
-        const id = elView[i] || 0;
-        this.el[i] = id >= 1 && id <= SUBSTANCE_COUNT ? id : 0; // unknown ids -> empty
-        if (this.el[i] !== 0) {
+        const x = i % this.cols, y = (i / this.cols) | 0;
+        const sx = Math.min(sourceCols - 1, Math.floor(x * sourceCols / this.cols));
+        const sy = Math.min(sourceRows - 1, Math.floor(y * sourceRows / this.rows));
+        const sourceIndex = sy * sourceCols + sx;
+        const rawId = elView[sourceIndex] || 0;
+        let id = rawId >= 1 && rawId <= SUBSTANCE_COUNT ? rawId : 0; // unknown ids -> empty
+        if (id !== 0 && this.maxWorldParticles > 0 && count >= this.maxWorldParticles) id = 0;
+        this.el[i] = id;
+        if (id !== 0) {
           count++;
-          const rec = SUBSTANCES[this.el[i]];
+          const rec = SUBSTANCES[id];
           this.aux[i] = (this._rng() * 4) | 0;
           this.ph[i] = rec.cls === 'liquid' && rec.ph != null ? Math.round(rec.ph * 10) : 255;
-          if (tView) this.temp[i] = tView[i];
+          if (tView && sourceIndex < tView.length) this.temp[i] = tView[sourceIndex];
         }
       }
       this.particles = count;
@@ -2852,19 +2929,38 @@ export class MatterEngine {
 
   resize(cols, rows) {
     cols = Math.max(8, cols | 0); rows = Math.max(8, rows | 0);
+    if (this.maxWorldCells > 0 && cols * rows > this.maxWorldCells) {
+      const aspect = cols / rows;
+      cols = Math.max(8, Math.floor(Math.sqrt(this.maxWorldCells * aspect)));
+      rows = Math.max(8, Math.floor(this.maxWorldCells / cols));
+      if (cols * rows > this.maxWorldCells) {
+        if (rows > 8) rows = Math.max(8, Math.floor(this.maxWorldCells / cols));
+        if (cols * rows > this.maxWorldCells) cols = Math.max(8, Math.floor(this.maxWorldCells / rows));
+      }
+    }
     if (cols === this.cols && rows === this.rows) return;
     const n = cols * rows;
     const nel = new Uint16Array(n), nlife = new Uint16Array(n), naux = new Uint8Array(n);
     const ntemp = new Float32Array(n).fill(this.ambientT), nph = new Uint8Array(n).fill(255);
     const nmix = new Uint8Array(n), npol = new Int8Array(n);
     const ntint = new Uint32Array(n);
+    let count = 0;
     for (let y = 0; y < rows; y++) {
       const sy = Math.min(this.rows - 1, Math.floor(y * this.rows / rows));
       for (let x = 0; x < cols; x++) {
         const sx = Math.min(this.cols - 1, Math.floor(x * this.cols / cols));
         const si = sy * this.cols + sx, di = y * cols + x;
-        nel[di] = this.el[si]; ntemp[di] = this.temp[si]; nlife[di] = this.life[si]; ntint[di] = this.tint[si];
-        naux[di] = this.aux[si] & 3; nph[di] = this.ph[si]; nmix[di] = this.mix[si]; npol[di] = this.pol[si];
+        const original = this.el[si];
+        const overParticleBudget = original !== 0 && this.maxWorldParticles > 0 && count >= this.maxWorldParticles;
+        nel[di] = overParticleBudget ? 0 : original;
+        if (overParticleBudget) {
+          ntemp[di] = this.ambientT; nlife[di] = 0; naux[di] = 0; nph[di] = 255;
+          nmix[di] = 0; npol[di] = 0; ntint[di] = 0;
+        } else {
+          if (nel[di] !== 0) count++;
+          ntemp[di] = this.temp[si]; nlife[di] = this.life[si]; ntint[di] = this.tint[si];
+          naux[di] = this.aux[si] & 3; nph[di] = this.ph[si]; nmix[di] = this.mix[si]; npol[di] = this.pol[si];
+        }
       }
     }
     this.cols = cols; this.rows = rows;
@@ -2884,7 +2980,6 @@ export class MatterEngine {
     this._arc = new Uint8Array(m);
     this._region = new Int16Array(m).fill(-1); this._regions = []; this._inside = new Int16Array(m).fill(-1);
     this.objMap = new Int32Array(m); this.objects.clear(); this._anims = [];
-    let count = 0; for (let i = 0; i < m; i++) if (nel[i] !== 0) count++;
     this.particles = count;
     this._sealedDirty = true;
     this._recountChunks(); // W32U-5: chunk grid follows the new dimensions
