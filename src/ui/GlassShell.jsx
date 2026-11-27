@@ -1,19 +1,9 @@
-
 import { useEffect } from 'react';
 
-/* Matter Lab Ultra — Winzy-style right-side glass settings rail.
-   Opened via a fired flag (window.__mzOpenSetByFire) or localStorage. */
-let __mzOpenFired = false;
-export const openGlassShell = () => { __mzOpenFired = true; try { globalThis.dispatchEvent(new Event('mzShellOpen')); } catch { /* noop */ } };
-
+/* Matter Lab Ultra — Winzy-style right-side glass settings rail. */
 export default function GlassShell({ setGlass }) {
   useEffect(() => {
-    try {
-      if (localStorage.getItem('mzOpen') === '0') setGlass(false);
-      const onFired = () => { setGlass(true); try { localStorage.setItem('mzOpen', '1'); } catch { /* noop */ } };
-      globalThis.addEventListener('mzShellOpen', onFired);
-      return () => { try { globalThis.removeEventListener('mzShellOpen', onFired); } catch { /* noop */ } };
-    } catch { /* noop */ }
+    try { if (localStorage.getItem('mzOpen') === '0') setGlass(false); } catch { /* noop */ }
   }, [setGlass]);
   return (
     <div className="mz-shell" data-open="1">
