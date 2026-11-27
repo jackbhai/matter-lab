@@ -18,7 +18,7 @@
 
 
 
-.card{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:16px;box-shadow:var(--sh-1),var(--edge-hi)}
 
 
 
@@ -746,3 +746,8 @@ button:not(.btn):not(.cat.on){color:var(--fg)}
 
 
 html[data-density="compact"] .btn{min-height:44px}
+
+/* Matter Lab Ultra — Winzy-style glass-card refresh */
+.card{position:relative}
+.card::after{content:'';position:absolute;inset:-0.6px;border-radius:var(--r);box-shadow:inset 0 0 0 0.6px color-mix(in srgb,var(--edge-hi) 50%,transparent),inset 0 1.5px 3px 0 color-mix(in srgb,var(--fg) 3%,transparent),inset 0 -1px 0 0 color-mix(in srgb,var(--fg) 4%,transparent);pointer-events:none}
+@supports(backdrop-filter: blur(1px)){ .card{border:none} }

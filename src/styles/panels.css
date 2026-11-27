@@ -174,3 +174,27 @@
 /* wheel popover must never slide under the TopBar on short viewports:
    popover + gap + 44px button, bottom-anchored above the wheel button */
 .ml-wheel-pop { max-height: min(344px, calc(var(--ml-vh, 100dvh) - 190px)); overflow-y: auto; }
+
+/* Matter Lab Ultra — right-side shell (Winzy-style glass rail) */
+.mz-shell { position: fixed; right: 0; top: 0; bottom: 0; width: min(360px, 88vw); transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); background: var(--mz-bg); border-left: 1px solid var(--mz-border-hi); backdrop-filter: var(--mz-blur); -webkit-backdrop-filter: var(--mz-blur); z-index: 240; display: flex; flex-direction: column; box-shadow: inset 0 1px 0 color-mix(in srgb,var(--fg) 4%,transparent), 0 0 24px rgba(0,0,0,0.5); }
+.mz-shell[data-open="1"] { transform: translateX(0); }
+.mz-shell-hdr { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 12px; color: var(--fg); }
+.mz-shell-title { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; }
+.mz-close { background: none; border: 1px solid var(--mz-border); color: var(--fg2); border-radius: 999px; width: 30px; height: 30px; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.mz-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 14px 20px; display: flex; flex-direction: column; gap: 8px; }
+.mz-card { background: var(--mz-s1); border: 1px solid var(--mz-border); border-radius: var(--r); padding: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.35); display: flex; flex-direction: column; gap: 6px; }
+.mz-card-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mz-card-label { color: var(--fg2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+.mz-card-value { color: var(--fg); font-weight: 700; font-size: 13px; text-align: right; word-break: break-word; }
+.mz-sw-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.mz-sw { width: 48px; height: 28px; border-radius: 999px; position: relative; flex: 0 0 48px; background: var(--mz-s2); border: 1px solid var(--mz-border); transition: all 0.3s ease; }
+.mz-sw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 999px; background: var(--fg2); transition: transform 0.3s ease; }
+.mz-sw[aria-checked="true"] { background: var(--grad); border-color: color-mix(in srgb,var(--grad) 60%,var(--mz-border)); }
+.mz-sw[aria-checked="true"]::after { transform: translateX(20px); background: #000; }
+.mz-log { background: var(--mz-s2); border: 1px solid var(--mz-border); border-radius: var(--r); padding: 8px 10px; overflow: auto; font-family: var(--mono, monospace); font-size: 10px; line-height: 1.5; max-height: 160px; white-space: pre; }
+.mz-log::-webkit-scrollbar { width: 4px; }
+.mz-log::-webkit-scrollbar-thumb { background: rgba(0,255,156,0.25); border-radius: 10px; }
+.mz-foot { padding: 10px 14px; display: flex; gap: 8px; }
+.mz-open-btn { position: absolute; left: -14px; top: 50%; transform: translateY(-50%); width: 26px; height: 52px; border-radius: 999px 0 0 999px; background: var(--mz-s3); border: 1px solid var(--mz-border); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 250; font-size: 12px; color: var(--fg2); }
+.mz-btn { flex: 1; background: var(--mz-s2); border: 1px solid var(--mz-border); color: var(--fg); border-radius: 999px; min-height: 44px; font-weight: 700; cursor: pointer; }
+@media (max-width: 480px) { .mz-shell { width: min(88vw, 88%); } }
