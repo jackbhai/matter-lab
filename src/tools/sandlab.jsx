@@ -374,6 +374,7 @@ export function MatterLab(props) {
   const pinchRef = useRef(null); // { d0, z0, cx, cy } while pinching
   const lastTapRef = useRef({ t: 0, x: 0, y: 0, fingers: 0 });
   const sparkFlickRef = useRef({ lastMoveT: 0, lastBurst: 0 });
+  const hoverRef = useRef(null); // world point under the pointer (hover ring on the world)
   const tiltPourRef = useRef({ since: 0, last: 0 });
   const rxLogRef = useRef([]); const rxIdRef = useRef(0);
   const [lookupA, setLookupA] = useState('water'); const [lookupB, setLookupB] = useState('sodium');
@@ -1102,6 +1103,14 @@ export function MatterLab(props) {
       else ctx.arc(ox + p.cur.x * sx, oy + p.cur.y * sy, brush * sx, 0, 7);
       ctx.stroke();
     }
+    /* Hover ring — a subtle cyan ring around the world cell under the
+       pointer (usability polish; readable, does not interfere with tools). */
+    const hv = hoverRef.current;
+    if (hv && !fbRef.current) {
+      ctx.save(); ctx.strokeStyle = 'rgba(120,230,255,0.75)'; ctx.setLineDash([]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(ox + hv.x * sx, oy + hv.y * sy, 3.6, 0, 7); ctx.stroke();
+      ctx.restore();
+    }
     /* W32U-4 flow view: coarse air-grid direction/magnitude overlay */
     if (vm === 'flow' && e.airVX && e.airVY) {
       const ac = e.airCols || e.pw || Math.ceil(cols / 4), ar = e.airRows || e.ph2 || Math.ceil(rows / 4);
@@ -1329,7 +1338,7 @@ export function MatterLab(props) {
   };
   const onMove = (ev) => {
     const rec = ptrMapRef.current.get(ev.pointerId);
-    if (rec) { rec.x = ev.clientX; rec.y = ev.clientY; }
+    if (rec) { rec.x = ev.clientX; rec.y = ev.clientY; hoverRef.current = worldPtFloat(ev.clientX, ev.clientY); }
     if (pinchRef.current) {
       // pinch zoom / two-finger pan: the world point grabbed at pinch start
       // stays under the moving pinch centre; distance sets the zoom.
