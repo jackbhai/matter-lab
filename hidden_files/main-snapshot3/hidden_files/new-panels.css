@@ -1,0 +1,173 @@
+/* Matter Lab modular CSS — generated in the UI-redesign wave from the
+   audited live rules only (see UI-REDESIGN-REPORT.md). Do not re-add
+   legacy OmniTools surfaces here. */
+
+
+
+.ml-topbar2 {
+  position: sticky; top: var(--ml-sp-2); z-index: 150;
+  display: flex; align-items: center; gap: var(--ml-sp-1);
+  background: var(--ml-glass); border: 1px solid var(--ml-glass-edge);
+  border-radius: var(--ml-r-lg); padding: var(--ml-sp-1);
+  box-shadow: var(--ml-shadow-sm);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+
+
+.ml-tb-btn {
+  min-width: var(--ml-touch); min-height: var(--ml-touch);
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  background: transparent; border: 0; border-radius: var(--ml-r-md);
+  color: var(--ml-c-fg); font-size: 15px; cursor: pointer; padding: 2px 6px;
+}
+
+
+.ml-tb-btn span { font-size: var(--ml-fs-xs); font-weight: 600; }
+
+
+.ml-tb-btn:active { background: var(--ml-c-surface-3); }
+
+
+.ml-tb-stats { font-size: var(--ml-fs-xs); color: var(--ml-c-fg-3); white-space: nowrap; overflow: hidden; }
+
+
+
+
+.ml-dock {
+  position: sticky; bottom: var(--ml-sp-2); z-index: 150;
+  display: flex; gap: var(--ml-sp-1);
+  background: var(--ml-glass); border: 1px solid var(--ml-glass-edge);
+  border-radius: var(--ml-r-lg); padding: var(--ml-sp-1);
+  box-shadow: var(--ml-shadow);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+
+
+.ml-dock-tab {
+  flex: 1 1 0; min-width: 0; min-height: 52px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: transparent; border: 1px solid transparent; border-radius: var(--ml-r-md);
+  color: var(--ml-c-fg-2); font-size: var(--ml-fs-xs); font-weight: 600; cursor: pointer;
+  white-space: nowrap; overflow-wrap: normal; padding: 4px 2px;
+}
+
+
+.ml-dock-tab[aria-pressed="true"] { background: var(--ml-c-surface-3); color: var(--ml-c-fg); border-color: var(--ml-c-line); }
+
+
+.ml-dock-dot { width: 14px; height: 14px; border-radius: 5px; background: var(--ml-c-surface-3); border: 1px solid var(--ml-c-line); }
+
+
+.ml-dock-dot[data-tab="solids"] { background: linear-gradient(135deg, #c9a86a, #8a6f3c); }
+
+
+.ml-dock-dot[data-tab="liquids"] { background: linear-gradient(135deg, #57b7e8, #2563eb); }
+
+
+.ml-dock-dot[data-tab="gases"] { background: linear-gradient(135deg, #e8eef2, #9db5ac); }
+
+
+.ml-dock-dot[data-tab="gear"] { background: linear-gradient(135deg, #9fb4c0, #546e7a); }
+
+
+.ml-dock-dot[data-tab="favs"] { background: linear-gradient(135deg, #ffd166, #e8a13a); }
+
+
+
+
+.ml-chipstrip {
+  display: flex; gap: var(--ml-sp-2); overflow-x: auto; overflow-y: hidden;
+  padding: var(--ml-sp-1) 0; -webkit-overflow-scrolling: touch; max-width: 100%;
+}
+
+
+
+
+.ml-wheel { position: absolute; right: var(--ml-sp-2); bottom: 52px; z-index: 140; display: flex; flex-direction: column; align-items: flex-end; gap: var(--ml-sp-2); }
+
+
+.ml-wheel-btn {
+  min-height: 52px; min-width: 96px; padding: 6px 14px;
+  display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  border-radius: var(--ml-r-pill); border: 1px solid var(--ml-c-accent-2);
+  background: var(--ml-glass); color: var(--ml-c-fg); box-shadow: var(--ml-shadow);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  font-weight: 700; cursor: pointer;
+}
+
+
+.ml-wheel-cur { font-size: var(--ml-fs-md); }
+
+
+.ml-wheel-pop {
+  border-radius: var(--ml-r-lg); padding: var(--ml-sp-2);
+  width: min(264px, calc(100vw - 32px)); max-height: 46dvh; overflow-y: auto; overflow-x: hidden;
+  box-shadow: var(--ml-shadow); box-sizing: border-box;
+}
+
+
+.ml-wheel-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--ml-sp-1); margin-top: 6px; }
+
+
+.ml-wheel-more { display: flex; flex-wrap: wrap; gap: var(--ml-sp-1); margin-top: 6px; max-width: 100%; }
+
+
+
+
+[data-mlroot="1"] .ml-picker-head { flex-wrap: wrap; }
+
+
+[data-mlroot="1"] .ml-picker-title { white-space: nowrap; font-size: var(--ml-fs-lg); }
+
+
+[data-mlroot="1"] .ml-picker-hint { flex-basis: 100%; order: 3; }
+
+/* ============================================================
+   Matter Lab UI-B (P4) — game-layer surfaces + accessibility.
+   Imported by sandlab.jsx AFTER ui-a.css in the cascade order of
+   the bundle, scoped to [data-mlroot] / .ml-home so nothing leaks.
+   ============================================================ */
+
+/* ---- font-size scaling (Settings: side panel → View → Text size) ----
+   Multiplies the app's small-text classes inside the lab. Base sizes:
+   .sm 12px, .btn.sm 12px, .chip ~11px, .seclabel 12px (theme.css). */
+[data-mlroot="1"][data-fs="s"]  { --ml-fsmul: 0.92; }
+[data-mlroot="1"][data-fs="m"]  { --ml-fsmul: 1; }
+[data-mlroot="1"][data-fs="l"]  { --ml-fsmul: 1.15; }
+[data-mlroot="1"][data-fs="xl"] { --ml-fsmul: 1.3; }
+[data-mlroot="1"] .sm       { font-size: calc(12px * var(--ml-fsmul, 1)); }
+[data-mlroot="1"] .btn.sm   { font-size: calc(12px * var(--ml-fsmul, 1)); }
+[data-mlroot="1"] .chip     { font-size: calc(11px * var(--ml-fsmul, 1)); }
+[data-mlroot="1"] .seclabel { font-size: calc(12px * var(--ml-fsmul, 1)); }
+[data-mlroot="1"] .ml-tb-btn span, [data-mlroot="1"] .ml-dock-tab span { font-size: calc(1em * var(--ml-fsmul, 1)); }
+
+/* home page honours the same stored scale */
+.ml-home[data-fs="s"]  { --ml-fsmul: 0.92; }
+.ml-home[data-fs="m"]  { --ml-fsmul: 1; }
+.ml-home[data-fs="l"]  { --ml-fsmul: 1.15; }
+.ml-home[data-fs="xl"] { --ml-fsmul: 1.3; }
+.ml-home .ml-exp-goal, .ml-home .ml-stat-label, .ml-home .ml-progress-line {
+  font-size: calc(12px * var(--ml-fsmul, 1));
+}
+
+/* ---- home progress line (Challenges card) ---- */
+.ml-progress { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.ml-progress-line { color: var(--fg2); font-size: 12px; line-height: 1.5; overflow-wrap: break-word; }
+.ml-progress-line b { color: var(--fg); }
+
+/* ---- achievement top toast never overlaps the TopBar stats on tiny screens ---- */
+[data-mlroot="1"] [data-achtoast="1"] { pointer-events: none; }
+
+/* ---- coach caption sits above the dock, never over the canvas centre ---- */
+@media (max-width: 480px) {
+  [data-coach="1"] .glass { bottom: calc(88px + var(--safe-b, 0px)) !important; }
+}
+
+/* redesign additions: inline chip strip dock + TopBar unread badge */
+.ml-stripdock { position: relative; z-index: 30; margin: 0 2px; border-radius: var(--ml-r-lg); padding: 6px 8px; }
+.ml-tb-badge { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; background: var(--bad, #e5534b); color: #fff; font-size: 10.5px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; pointer-events: none; }
+/* brief law: minimum 44px touch targets on compact buttons */
+.btn.sm { min-width: 44px; min-height: 44px; }
+.ml-wheel-grid .btn { white-space: nowrap; font-size: 12.5px; }

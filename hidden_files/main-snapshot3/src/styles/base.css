@@ -1,0 +1,363 @@
+/* Matter Lab modular CSS — generated in the UI-redesign wave from the
+   audited live rules only (see UI-REDESIGN-REPORT.md). Do not re-add
+   legacy OmniTools surfaces here. */
+
+
+
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+
+
+
+
+html{-webkit-text-size-adjust:100%}
+
+
+
+
+html,body,#root{height:100%}
+
+
+
+
+body{
+  background:var(--bg);color:var(--fg);font-family:var(--font-body);
+  font-size:15px;line-height:1.5;overscroll-behavior-y:none;
+  -webkit-font-smoothing:antialiased;
+}
+
+
+
+
+::selection{background:var(--green);color:#000}
+
+
+
+
+
+
+::-webkit-scrollbar{width:6px;height:6px}
+
+
+
+
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px}
+
+
+
+
+
+
+input,select,textarea,button,optgroup,option{
+  font-family:var(--font-body);
+  color:var(--fg);
+  color-scheme:dark;                 
+}
+
+
+
+
+select{
+  -webkit-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--green) 50%),
+                   linear-gradient(135deg,var(--green) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  padding-right:38px !important;
+}
+
+
+
+
+
+select option,select optgroup{
+  background:var(--s2) !important;
+  color:var(--fg) !important;
+}
+
+
+
+
+input[type="date"],input[type="time"],input[type="datetime-local"],input[type="month"]{
+  background:var(--s1);color:var(--fg);
+}
+
+
+
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator{
+  filter:invert(1) sepia(1) saturate(5) hue-rotate(100deg);cursor:pointer;
+}
+
+
+
+
+input[type="date"]::-webkit-datetime-edit-text,
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field{color:var(--fg)}
+
+
+
+
+input[type="color"]{
+  -webkit-appearance:none;appearance:none;border:1px solid var(--line);
+  background:var(--s1);cursor:pointer;padding:4px;
+}
+
+
+
+
+input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
+
+
+
+
+input[type="color"]::-webkit-color-swatch{border:0;border-radius:8px}
+
+
+
+
+input[type="range"]{
+  -webkit-appearance:none;appearance:none;background:transparent;
+  accent-color:var(--green);height:26px;
+}
+
+
+
+
+input[type="range"]::-webkit-slider-runnable-track{
+  height:5px;border-radius:3px;background:var(--line2);
+}
+
+
+
+
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:19px;height:19px;border-radius:50%;
+  background:var(--green);margin-top:-7px;box-shadow:0 0 9px color-mix(in srgb,var(--green) 55%,transparent);
+  border:0;cursor:pointer;
+}
+
+
+
+
+input[type="range"]::-moz-range-track{height:5px;border-radius:3px;background:var(--line2)}
+
+
+
+
+input[type="range"]::-moz-range-thumb{
+  width:19px;height:19px;border:0;border-radius:50%;background:var(--green);
+  box-shadow:0 0 9px color-mix(in srgb,var(--green) 55%,transparent);cursor:pointer;
+}
+
+
+
+
+input::placeholder,textarea::placeholder{color:var(--fg3);opacity:1}
+
+
+
+
+
+input:-webkit-autofill,input:-webkit-autofill:focus{
+  -webkit-text-fill-color:var(--fg);
+  -webkit-box-shadow:0 0 0 1000px var(--s1) inset;
+  caret-color:var(--fg);
+}
+
+
+
+
+details summary{color:var(--cyan)}
+
+
+
+
+
+html {
+  transition: var(--theme-transition);
+}
+
+
+
+
+
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line2) 80%, transparent);
+}
+
+
+
+
+
+
+[data-theme="custom"] {
+  
+}
+
+
+
+
+
+
+input[type="color"] {
+  width: 40px;
+  height: 36px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--s1);
+  cursor: pointer;
+}
+
+
+
+
+
+
+:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:6px}
+
+
+
+
+::selection{background:var(--green);color:#00110A}
+
+
+
+
+
+
+
+
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea,
+[data-theme="light"] button,
+[data-theme="light"] optgroup,
+[data-theme="light"] option{color-scheme:light}
+
+
+
+
+
+[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator{filter:none}
+
+
+
+
+
+
+[data-theme="light"]{--aqi-mod:#3F6212}
+
+
+
+
+
+
+[data-theme="light"]{
+  --sh-col:color-mix(in srgb,var(--fg) 16%,transparent);
+  --sh-col-soft:color-mix(in srgb,var(--fg) 9%,transparent);
+}
+
+
+
+
+:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:6px;
+  animation:focusring var(--d-1) var(--ease-out)}
+
+
+
+
+html[data-motion="reduced"] *,html[data-motion="reduced"] *::before,html[data-motion="reduced"] *::after{
+  animation-duration:.01ms !important; animation-iteration-count:1 !important;
+  transition-duration:.01ms !important; scroll-behavior:auto !important; }
+
+
+
+
+:focus-visible { animation: w31-focusdraw .12s var(--ease-out); }
+
+
+
+
+
+html { overscroll-behavior-y: contain; }
+
+
+
+
+body { overscroll-behavior: contain; }
+
+
+
+/* @keyframes fade */
+
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+
+
+/* @keyframes focusring */
+
+
+
+@keyframes focusring{from{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 0%,transparent)}
+  to{box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 35%,transparent)}}
+
+
+
+/* @keyframes sheetbg */
+
+@keyframes sheetbg{from{backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  to{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}}
+
+
+
+/* @keyframes toastin */
+
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+
+
+/* @keyframes up */
+
+@keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+
+
+
+/* @keyframes w31-drawon */
+
+
+@keyframes w31-drawon { from { stroke-dashoffset: 60; } to { stroke-dashoffset: 0; } }
+
+
+
+/* @keyframes w31-focusdraw */
+
+
+@keyframes w31-focusdraw { from { outline-offset: 6px; } to { outline-offset: 2px; } }
+
+
+@keyframes w31-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+
+
+@keyframes w31-radar{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+
+
+
+html[data-motion="soft"]{
+  --d-1:150ms; --d-2:250ms; --d-3:350ms; --d-4:525ms;
+  --ease-spring:var(--ease-out);
+}
+
+
+html[data-motion="soft"] .meshbg.live i,
+html[data-mood="calm"] .meshbg.live i,
+html[data-mood="calm"] .catmesh-drift i{
+  animation:none;
+}

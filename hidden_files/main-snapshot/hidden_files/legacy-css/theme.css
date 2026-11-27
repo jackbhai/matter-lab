@@ -1,0 +1,2651 @@
+/* OmniTools design system
+   Fonts from AHM7xMakki: Bangers (display) · DM Sans (body) · DM Mono (code)
+   Palette: AMOLED black + light green + cyan                              */
+
+:root{
+  /* surfaces — true black for AMOLED battery saving */
+  --bg:#000000;
+  --s1:#080B0A;
+  --s2:#0E1412;
+  --s3:#141C19;
+  --line:#1C2724;
+  --line2:#26332F;
+
+  /* brand */
+  --green:#00FF9C;
+  --green-dim:#00C77A;
+  --cyan:#00E5FF;
+  --cyan-dim:#00B4CC;
+  --grad:linear-gradient(135deg,#00FF9C 0%,#00E5FF 100%);
+
+  /* text */
+  --fg:#E8FFF4;
+  --fg2:#9DB5AC;
+  --fg3:#84A295;   /* W31 §3.4: raised for the 4.5:1 micro-label floor */
+
+  /* status */
+  --warn:#FFD166;
+  --bad:#FF5C7A;
+
+  --r:16px; --r-sm:12px;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+
+  /* ---- W31 §4.2 spacing scale (4px base) ---- */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px; --sp-16:64px;
+  --pad-screen:16px;
+  --gap-section:24px;
+  --gap-card:12px;
+  --row-h:52px;
+  --row-h-dense:48px;
+
+  /* ---- W31 §4.3 radii ---- */
+  --r-xs:8px; --r-lg:22px; --r-xl:28px; --r-pill:999px;
+
+  /* ---- W31 §4.4 elevation & glass (theme-derived via color-mix;
+     the 16 theme vars above remain the only colour inputs) ---- */
+  --sh-col:color-mix(in srgb,#000 55%,transparent);
+  --sh-col-soft:color-mix(in srgb,#000 32%,transparent);
+  --sh-0:none;
+  --sh-1:0 1px 2px var(--sh-col),0 4px 14px var(--sh-col-soft);
+  --sh-2:0 2px 6px var(--sh-col),0 12px 32px var(--sh-col-soft);
+  --sh-3:0 8px 20px var(--sh-col),0 24px 64px var(--sh-col-soft);
+  --hairline:color-mix(in srgb,var(--fg) 7%,transparent);
+  --edge-hi:inset 0 1px 0 color-mix(in srgb,var(--fg) 6%,transparent);
+  --glass-bg:color-mix(in srgb,var(--bg) 76%,transparent);
+  --glass-blur:blur(18px) saturate(1.45);
+  --glass-border:color-mix(in srgb,var(--fg) 9%,transparent);
+  /* item 2.1 refraction edge: gradient border fg 14% → 2% */
+  --glass-edge:linear-gradient(180deg,color-mix(in srgb,var(--fg) 14%,transparent),color-mix(in srgb,var(--fg) 2%,transparent));
+
+  /* ---- W31 §5.1 motion tokens ---- */
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-spring:cubic-bezier(.34,1.4,.64,1);
+  --ease-move:cubic-bezier(.2,.9,.3,1);
+  --d-1:120ms; --d-2:200ms; --d-3:280ms; --d-4:420ms;
+
+  /* W31 §4.1: shipped display default is Space Grotesk (faces injected
+     by core/fonts.js at boot); a saved user/AI font overrides this
+     var inline and always wins. Bangers stays in the pack. */
+  --font-display:'Space Grotesk','Noto Sans Devanagari','Noto Sans Gurmukhi',system-ui,sans-serif;
+  --font-body:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans Devanagari','Noto Sans Gurmukhi',sans-serif;
+  --font-mono:'DM Mono',ui-monospace,Menlo,monospace;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+html,body,#root{height:100%}
+body{
+  background:var(--bg);color:var(--fg);font-family:var(--font-body);
+  font-size:15px;line-height:1.5;overscroll-behavior-y:none;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--green);color:#000}
+
+/* scrollbars */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px}
+
+.app{max-width:680px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;position:relative}
+
+/* ---------------- glow / glass primitives ---------------- */
+.glass{
+  /* W31 §4.4: neutral theme-derived glass (the green tint moved to
+     the aurora system, §4.5). Item 2.1 refraction edge lives in the
+     W31 block at the end of this file. */
+  background:var(--glass-bg);
+  border:1px solid var(--glass-border);border-radius:var(--r);
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+}
+.glow{box-shadow:0 0 24px color-mix(in srgb,var(--green) 14%,transparent)}
+.gradtext{
+  background:var(--grad);-webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+/* ---------------- top bar ---------------- */
+.topbar{
+  position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:12px;
+  padding:calc(12px + var(--safe-t)) 16px 12px;
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border-bottom:1px solid var(--hairline);
+}
+.brand{font-family:var(--font-display);font-size:26px;letter-spacing:1.4px;line-height:1}
+.tb-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.tb-t b{font-size:16px;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-t span{font-size:11.5px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iconbtn{
+  /* §6.6: 44px hit box, glyph stays ~19px */
+  width:44px;height:44px;flex:0 0 auto;display:grid;place-items:center;
+  background:var(--s2);border:1px solid var(--line);border-radius:12px;
+  color:var(--fg);font-size:19px;cursor:pointer;
+}
+.iconbtn:active{background:var(--s3);transform:scale(.94)}
+
+/* ---------------- hero ---------------- */
+.hero{padding:22px 4px 18px}
+.hero h1{
+  font-family:var(--font-display);font-size:42px;line-height:.98;letter-spacing:1.6px;
+  margin-bottom:10px;
+}
+.hero p{color:var(--fg2);font-size:14px;max-width:34ch}
+.hero .pillrow{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
+.pill{
+  font-size:11px;padding:5px 11px;border-radius:999px;
+  border:1px solid var(--line2);color:var(--fg2);background:var(--s1);
+}
+.pill.on{border-color:var(--green);color:var(--green);box-shadow:0 0 12px color-mix(in srgb,var(--green) 18%,transparent)}
+
+/* ---------------- search ---------------- */
+.search{
+  display:flex;align-items:center;gap:9px;background:var(--s1);
+  border:1px solid var(--line);border-radius:14px;padding:0 13px;margin-bottom:14px;
+}
+.search:focus-within{border-color:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 9%,transparent)}
+.search svg{width:17px;height:17px;fill:none;stroke:var(--fg3);stroke-width:2;flex:0 0 auto}
+.search input{
+  flex:1;background:none;border:0;color:var(--fg);font-size:16px;
+  padding:13px 0;outline:none;min-width:0;font-family:var(--font-body);
+}
+.search input::placeholder{color:var(--fg3)}
+
+/* ---------------- category chips ---------------- */
+.cats{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none}
+.cats::-webkit-scrollbar{display:none}
+.cat{
+  flex:0 0 auto;padding:8px 15px;border-radius:999px;font-size:12.5px;font-weight:500;
+  background:var(--s2);border:1px solid var(--line);color:var(--fg2);cursor:pointer;
+  white-space:nowrap;
+}
+.cat.on{background-color:var(--green);background-image:var(--grad);color:#00110A;
+  border-color:transparent;font-weight:700}
+
+/* ---------------- tool grid ---------------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:10px}
+.tile{
+  position:relative;background:var(--s1);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:15px 9px;display:flex;flex-direction:column;
+  align-items:center;gap:6px;color:var(--fg);cursor:pointer;text-align:center;
+  min-height:100px;justify-content:center;overflow:hidden;
+  transition:transform .14s cubic-bezier(.34,1.56,.64,1),border-color .14s;
+}
+.tile:active{transform:scale(.94);border-color:var(--green)}
+.tile .ic{font-size:24px;line-height:1}
+.tile b{font-size:12px;font-weight:600;letter-spacing:-.1px}
+.tile small{font-size:10px;color:var(--fg3);line-height:1.25}
+.tile .live{
+  position:absolute;top:6px;right:6px;width:5px;height:5px;border-radius:50%;
+  background:var(--green);box-shadow:0 0 6px var(--green);
+}
+.tile .off{position:absolute;top:5px;right:6px;font-size:9.5px;color:var(--cyan)}
+
+/* ---------------- cards / data ---------------- */
+.card{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card+.card{margin-top:12px}
+.chead{
+  font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--fg3);
+  margin-bottom:12px;display:flex;align-items:center;gap:8px;font-weight:600;
+}
+.big{font-size:38px;font-weight:800;letter-spacing:-1.6px;line-height:1}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--s2);border:1px solid var(--line);border-radius:var(--r-sm);padding:11px;text-align:center}
+.stat .v{font-size:17px;font-weight:700;letter-spacing:-.4px}
+.stat .l{font-size:10.5px;color:var(--fg3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.stat .s{font-size:10px;color:var(--fg3)}
+
+.kv{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.kv:last-child{border-bottom:0}
+.kv span{color:var(--fg3);flex:0 0 auto}
+.kv b{text-align:right;font-weight:600}
+
+.list{display:flex;flex-direction:column;gap:1px;background:var(--s1);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.row{display:flex;align-items:center;gap:11px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.col{display:flex;flex-direction:column;gap:3px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.row:last-child,.col:last-child{border-bottom:0}
+.row:active,.col:active{background:var(--s2)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.main b,.col b{font-size:14px;font-weight:600}
+.end{text-align:right;font-size:13px}
+a.col,a.row{color:inherit;text-decoration:none}
+
+/* ---------------- controls ---------------- */
+.btn{
+  background-color:var(--green);background-image:var(--grad);color:#00110A;
+  border:0;padding:12px 18px;border-radius:12px;
+  font-family:var(--font-body);font-size:14px;font-weight:700;cursor:pointer;
+}
+.btn:active{transform:scale(.97)}
+.btn.ghost{background:var(--s2);color:var(--fg);border:1px solid var(--line);font-weight:500}
+.btn.sm{padding:7px 12px;font-size:12px}
+.btn:disabled{opacity:.4}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;min-width:0}
+.btnrow>*{min-width:0;max-width:100%}
+.btnrow .btn{white-space:normal;text-align:center}
+.fld{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.fld label{font-size:11px;color:var(--fg3);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+.fld input,.fld select,.fld textarea{
+  background:var(--s1);border:1px solid var(--line);color:var(--fg);
+  padding:12px;border-radius:12px;font-size:16px;outline:none;width:100%;
+  font-family:var(--font-body);
+}
+.fld textarea{min-height:110px;resize:vertical;font-family:var(--font-mono);font-size:13px}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--green)}
+.out{
+  background:var(--s2);border:1px solid var(--line);border-radius:12px;padding:12px;
+  font-family:var(--font-mono);font-size:13px;word-break:break-all;white-space:pre-wrap;
+  max-height:280px;overflow:auto;
+}
+
+/* ---------------- states ---------------- */
+.state{display:flex;flex-direction:column;align-items:center;gap:11px;padding:36px 16px;color:var(--fg3);text-align:center}
+.spin{width:26px;height:26px;border:2.5px solid var(--line2);border-top-color:var(--green);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+/* W31 §6.5/§6.10 (item 7.16): Err is a card — s1 surface, hairline,
+   --r, --sh-1, specular top edge; the bad tint survives only as a
+   left edge so the card reads as a card, not an alert banner. */
+.err{background:var(--s1);border:1px solid var(--hairline);border-left:3px solid color-mix(in srgb,var(--bad) 55%,transparent);border-radius:var(--r);padding:14px;color:var(--fg);box-shadow:var(--sh-1),var(--edge-hi)}
+.err h4{font-size:14px;margin-bottom:5px}
+.err p{font-size:12.5px;color:var(--fg2)}
+.err details{margin-top:8px;font-size:11.5px}
+.err summary{color:var(--cyan);cursor:pointer;padding:4px 0}
+.err li{color:var(--fg3);margin-left:14px}
+
+.src{
+  display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:10px;
+  border-top:1px solid var(--line);font-size:11px;color:var(--fg3);flex-wrap:wrap;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);flex:0 0 auto}
+.dot.warn{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+.dot.bad{background:var(--bad);box-shadow:0 0 6px var(--bad)}
+.tag{font-size:10px;padding:2px 7px;border-radius:5px;background:var(--s3);border:1px solid var(--line2);color:var(--fg3)}
+.tag.g{color:var(--green);border-color:color-mix(in srgb,var(--green) 30%,transparent)}
+.tag.c{color:var(--cyan);border-color:color-mix(in srgb,var(--cyan) 30%,transparent)}
+/* A confirmed-live marker sits inside its tag, so "live" reads as a measured
+   fact rather than a label every row wears by default. */
+.tag .dot{width:5px;height:5px;margin-right:4px;display:inline-block;vertical-align:middle}
+.tag .dot.live{background:var(--green);box-shadow:0 0 5px var(--green)}
+.tag.w{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+
+/* ---------------- bottom nav ---------------- */
+.nav{
+  position:sticky;bottom:0;z-index:60;display:grid;grid-template-columns:repeat(5,1fr);
+  background:rgba(0,0,0,.94);backdrop-filter:blur(16px);border-top:1px solid var(--line);
+  padding-bottom:var(--safe-b);margin-top:auto;
+}
+.nav button{
+  background:none;border:0;color:var(--fg3);padding:9px 2px 8px;display:flex;
+  flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-family:var(--font-body);
+}
+.nav button span{font-size:17px;line-height:1}
+.nav button small{font-size:10px;font-weight:600}
+.nav button.on{color:var(--green)}
+
+.main-area{flex:1;padding:0 16px 20px}
+.dim{color:var(--fg3)}
+.sm{font-size:12px}
+.mono{font-family:var(--font-mono)}
+.center{text-align:center}
+.hr{height:1px;background:var(--line);margin:16px 0}
+
+@media(min-width:600px){
+  .hero h1{font-size:52px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(116px,1fr))}
+}
+
+/* ============================================================
+   NATIVE CONTROL CONTRAST FIX
+   Browsers render <option>, date/color/range widgets with their own
+   light-mode defaults => black text on our black surface = invisible.
+   These rules force every native control into the dark theme.
+   ============================================================ */
+input,select,textarea,button,optgroup,option{
+  font-family:var(--font-body);
+  color:var(--fg);
+  color-scheme:dark;                 /* makes UA widgets render dark */
+}
+select{
+  -webkit-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--green) 50%),
+                   linear-gradient(135deg,var(--green) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  padding-right:38px !important;
+}
+/* the dropdown list itself is drawn by the OS - force dark there too */
+select option,select optgroup{
+  background:var(--s2) !important;
+  color:var(--fg) !important;
+}
+input[type="date"],input[type="time"],input[type="datetime-local"],input[type="month"]{
+  background:var(--s1);color:var(--fg);
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator{
+  filter:invert(1) sepia(1) saturate(5) hue-rotate(100deg);cursor:pointer;
+}
+input[type="date"]::-webkit-datetime-edit-text,
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field{color:var(--fg)}
+input[type="color"]{
+  -webkit-appearance:none;appearance:none;border:1px solid var(--line);
+  background:var(--s1);cursor:pointer;padding:4px;
+}
+input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
+input[type="color"]::-webkit-color-swatch{border:0;border-radius:8px}
+input[type="range"]{
+  -webkit-appearance:none;appearance:none;background:transparent;
+  accent-color:var(--green);height:26px;
+}
+input[type="range"]::-webkit-slider-runnable-track{
+  height:5px;border-radius:3px;background:var(--line2);
+}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:19px;height:19px;border-radius:50%;
+  background:var(--green);margin-top:-7px;box-shadow:0 0 9px color-mix(in srgb,var(--green) 55%,transparent);
+  border:0;cursor:pointer;
+}
+input[type="range"]::-moz-range-track{height:5px;border-radius:3px;background:var(--line2)}
+input[type="range"]::-moz-range-thumb{
+  width:19px;height:19px;border:0;border-radius:50%;background:var(--green);
+  box-shadow:0 0 9px color-mix(in srgb,var(--green) 55%,transparent);cursor:pointer;
+}
+input::placeholder,textarea::placeholder{color:var(--fg3);opacity:1}
+/* autofill in Chrome paints a white box with black text */
+input:-webkit-autofill,input:-webkit-autofill:focus{
+  -webkit-text-fill-color:var(--fg);
+  -webkit-box-shadow:0 0 0 1000px var(--s1) inset;
+  caret-color:var(--fg);
+}
+/* anything the browser renders inside our cards inherits readable colour */
+.card,.list,.out,.state{color:var(--fg)}
+details summary{color:var(--cyan)}
+
+.locbar{
+  display:flex;align-items:center;gap:10px;background:var(--s1);
+  border:1px solid var(--line);border-radius:14px;padding:11px 13px;margin-bottom:12px;
+}
+.locbar b{color:var(--fg)}
+
+/* Gradient surfaces must always carry an opaque fallback colour, otherwise the
+   dark text sits on a transparent (= black) background and disappears.
+   `.tag.g` is deliberately NOT in this list: it is an outline chip with green
+   TEXT, so giving it a green background made the label invisible (green on
+   green). It gets its own tinted background below instead. */
+.btn,.cat.on{background-color:var(--green)}
+.tag.g{background-color:color-mix(in srgb,var(--green) 10%,transparent);background-image:none}
+.btn.ghost{background-color:var(--s2);background-image:none;color:var(--fg)}
+.gradtext{background-color:transparent}
+@supports not (background-clip:text){
+  .gradtext{-webkit-text-fill-color:var(--green);color:var(--green)}
+}
+/* Safety net: never allow pure-black text anywhere on the dark shell. */
+button:not(.btn):not(.cat.on){color:var(--fg)}
+
+/* ---------------- mini player ---------------- */
+.mini{position:fixed;left:0;right:0;bottom:calc(58px + var(--safe-b));z-index:70;
+  max-width:680px;margin:0 auto;background:rgba(14,20,18,.97);backdrop-filter:blur(18px);
+  border-top:1px solid var(--line);cursor:pointer}
+.mini.mini-hidden{bottom:calc(58px + var(--safe-b));background:rgba(14,20,18,.92);border-top:1px solid color-mix(in srgb,var(--green) 20%,transparent);
+  display:flex;align-items:center;gap:8px;padding:6px 10px}
+.mini-restore{flex:1;background:var(--s2);border:1px solid var(--line);color:var(--fg2);padding:6px 10px;border-radius:999px;
+  font-size:11px;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mini-restore:active{transform:scale(.97)}
+.mini-prog{height:2px;background:var(--line2)}
+.mini-prog i{display:block;height:100%;background:var(--grad);background-color:var(--green)}
+.mini-row{display:flex;align-items:center;gap:10px;padding:8px 12px}
+.mini-row img,.mini-ph{width:40px;height:40px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:var(--s3)}
+.mini-ph{display:grid;place-items:center;font-size:18px}
+/* The collapsed thumbnail becomes a small turning record while playing, at
+   the same rate as the full player's disc, and freezes in place when paused
+   rather than snapping back upright. */
+.mini-art,.mini-ph{border-radius:50%;animation:discspin 18s linear infinite;
+  animation-play-state:paused}
+.mini-art.spin,.mini-ph.spin{animation-play-state:running}
+.mini-txt{flex:1;min-width:0;display:flex;flex-direction:column;
+  animation:miniIn .45s cubic-bezier(.16,1,.3,1) both}
+.mini-txt b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* A title too long for the bar scrolls once and settles, instead of being cut
+   off with an ellipsis the user can do nothing about. */
+.mini-ttl{overflow:hidden}
+.mini-ttl>span{display:inline-block;white-space:nowrap;animation:marq 13s linear 2s infinite}
+@keyframes marq{
+  0%,12%{transform:translateX(0)}
+  46%,58%{transform:translateX(min(0px,calc(100% - 46vw)))}
+  92%,100%{transform:translateX(0)}
+}
+.mini-txt span{font-size:11px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mini-btn{background:none;border:0;color:var(--fg);font-size:17px;padding:5px;cursor:pointer;flex:0 0 auto}
+.mini-btn.play{background-color:var(--green);background-image:var(--grad);color:#00110A;
+  width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:14px}
+
+/* ---------------- full player ---------------- */
+.full{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column;
+  max-width:680px;margin:0 auto;animation:up .22s cubic-bezier(.2,.9,.3,1)}
+@keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.full-top{display:flex;align-items:center;gap:12px;padding:calc(12px + var(--safe-t)) 16px 10px}
+.full-ttl{flex:1;text-align:center;display:flex;flex-direction:column}
+.full-ttl b{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--fg3)}
+.full-ttl span{font-size:11px;color:var(--green)}
+.full-tabs{display:flex;gap:8px;padding:0 16px 10px;overflow-x:auto;scrollbar-width:none}
+.full-tabs::-webkit-scrollbar{display:none}
+.full-body{flex:1;overflow-y:auto;padding:8px 16px}
+.art-wrap{display:grid;place-items:center;padding:10px 0}
+/* Generic square sleeve, still used by non-disc surfaces. The player's disc
+   overrides width/height/radius via .art-disc .art, which is more specific. */
+.art{width:min(72vw,270px);aspect-ratio:1;border-radius:20px;object-fit:cover;
+  box-shadow:0 14px 44px color-mix(in srgb,var(--green) 16%,transparent)}
+.art.ph{display:grid;place-items:center;font-size:64px;background:var(--s2)}
+.full-name{font-family:var(--font-display);font-size:25px;letter-spacing:.8px;text-align:center;
+  margin-top:12px;line-height:1.15;animation:fullTitleLand .8s cubic-bezier(.16,1,.3,1) both}
+.lyrics{padding:8px 0 20px;max-height:100%}
+.lyr-src{text-align:center;margin:0 0 12px;opacity:.7}
+.lyr{font-size:16px;line-height:1.9;color:var(--fg3);text-align:center;cursor:pointer;
+  transition:color .2s,transform .2s;padding:2px 0}
+.lyr.on{color:var(--green);font-weight:700;transform:scale(1.05);text-shadow:0 0 18px color-mix(in srgb,var(--green) 40%,transparent)}
+.lyr .w{color:var(--fg3)}
+.lyr .w.done{color:var(--green)}
+.lyr .w.on{-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}
+.lyr-plain{white-space:pre-wrap;font-size:14px;line-height:1.8;color:var(--fg2);font-family:var(--font-body)}
+.eqrow{display:flex;gap:3px;align-items:flex-end;justify-content:space-between}
+.eqband{flex:1;text-align:center;display:flex;flex-direction:column;align-items:center}
+.eqband .vert{writing-mode:vertical-lr;direction:rtl;width:22px;height:110px;accent-color:var(--green)}
+.eqhz{font-size:10px;color:var(--fg3);margin-top:5px}
+.eqdb{font-size:10px;color:var(--green)}
+.full-ctl{padding:12px 16px calc(16px + var(--safe-b));border-top:1px solid var(--line);background:var(--s1)}
+.seek{width:100%;accent-color:var(--green)}
+.times{display:flex;justify-content:space-between;font-size:11px;color:var(--fg3);margin-top:-4px}
+.btns{display:flex;align-items:center;justify-content:center;gap:20px;margin:10px 0 4px}
+.cbtn{background:none;border:0;color:var(--fg);font-size:22px;cursor:pointer;padding:4px}
+.cbtn.act{color:var(--green)}
+.cbtn.big{width:58px;height:58px;border-radius:50%;background-color:var(--green);
+  background-image:var(--grad);color:#00110A;font-size:22px;display:grid;place-items:center}
+.has-mini .main-area{padding-bottom:130px}
+.ytbox{position:relative;width:100%;aspect-ratio:16/9;border-radius:16px;overflow:hidden;
+  background:#000;box-shadow:0 14px 44px color-mix(in srgb,var(--green) 14%,transparent)}
+.ytbox iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.yt-hidden{position:fixed;width:1px;height:1px;opacity:.01;pointer-events:none;left:-9999px;bottom:0}
+.yt-hidden iframe{width:320px;height:180px;border:0}
+
+/* ================================================================
+   Real SVG icons — replaced every emoji in the UI.
+   Emoji rendered as a different font on every OS, ignored the theme
+   colours and could not be sized reliably. These inherit currentColor.
+   ================================================================ */
+.ico{flex:0 0 auto;vertical-align:-.14em}
+.tile .ic{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;
+  background:var(--s3);color:var(--green);margin-bottom:2px}
+.tile:active .ic{background:color-mix(in srgb,var(--green) 14%,transparent)}
+.nav button .ico{margin-bottom:2px}
+.chead{display:flex;align-items:center;gap:7px}
+.chead .ico{color:var(--green)}
+.chead.sm{font-size:11.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--fg3)}
+.btn .ico,.cat .ico,.pill .ico{margin-right:5px}
+.pill .ico{color:var(--green)}
+.search .ico{color:var(--fg3);flex:0 0 auto}
+
+/* ---------------- mode hubs (Bus / Train / Metro) ---------------- */
+.hubhead{display:flex;align-items:center;gap:13px;padding:2px 0 14px}
+.hubico{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;flex:0 0 auto;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--green) 16%,transparent),color-mix(in srgb,var(--cyan) 10%,transparent));
+  color:var(--green);border:1px solid color-mix(in srgb,var(--green) 22%,transparent)}
+.hubhead b{display:block;font-size:18px;font-family:var(--font-display);letter-spacing:.5px}
+.hubhead span{display:block;font-size:12px;margin-top:1px}
+
+.tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+  background:var(--s2);border:1px solid var(--line);border-radius:14px;padding:5px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1;min-width:max-content;display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:9px 13px;border-radius:10px;border:0;background:none;color:var(--fg3);
+  font-size:12.5px;font-weight:650;font-family:var(--font-body);cursor:pointer;white-space:nowrap;
+  transition:background .15s,color .15s}
+.tab.on{background-color:var(--green);background-image:var(--grad);color:#00110A}
+.tab.on .ico{color:#00110A}
+
+/* ---------------- inputs with a leading icon ---------------- */
+.ip-wrap{display:flex;align-items:center;gap:9px;background:var(--s2);border:1px solid var(--line);
+  border-radius:12px;padding:0 12px}
+.ip-wrap:focus-within{border-color:color-mix(in srgb,var(--green) 45%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 9%,transparent)}
+.ip-wrap .ico{color:var(--fg3)}
+.ip-wrap input{flex:1;background:none;border:0;padding:12px 0;color:var(--fg);
+  font-size:16px;font-family:var(--font-body);outline:none;min-width:0}
+.ip-x{background:none;border:0;color:var(--fg3);display:grid;place-items:center;cursor:pointer;padding:4px}
+
+/* ---------------- checkbox row ---------------- */
+.chk{display:flex;align-items:center;gap:10px;padding:11px 13px;margin-bottom:10px;
+  background:var(--s2);border:1px solid var(--line);border-radius:12px;
+  font-size:13px;cursor:pointer;user-select:none}
+.chk input{width:18px;height:18px;accent-color:var(--green);flex:0 0 auto;cursor:pointer}
+
+/* ---------------- chips (uses / side effects) ---------------- */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.chip{font-size:11.5px;padding:5px 10px;border-radius:8px;background:var(--s3);color:var(--fg2);
+  border:1px solid var(--line);line-height:1.3}
+.chip.g{background:color-mix(in srgb,var(--green) 9%,transparent);border-color:color-mix(in srgb,var(--green) 26%,transparent);color:var(--green)}
+.chip.w{background:color-mix(in srgb,var(--warn) 9%,transparent);border-color:color-mix(in srgb,var(--warn) 26%,transparent);color:#FFE2A0}
+
+/* ---------------- inline notes ---------------- */
+.note{margin-top:10px;padding:9px 12px;border-radius:10px;font-size:12px;line-height:1.55;
+  background:color-mix(in srgb,var(--cyan) 7%,transparent);border:1px solid color-mix(in srgb,var(--cyan) 22%,transparent);color:#A9EEFF}
+.note.bad{background:color-mix(in srgb,var(--bad) 8%,transparent);border-color:color-mix(in srgb,var(--bad) 28%,transparent);color:#FFB3BE}
+.note.warn{background:color-mix(in srgb,var(--warn) 8%,transparent);border-color:color-mix(in srgb,var(--warn) 28%,transparent);color:#FFE2A0}
+
+/* ---------------- bus route badge + change bar ---------------- */
+.busref{min-width:54px;padding:4px 9px;border-radius:8px;text-align:center;flex:0 0 auto;
+  background:var(--s3);color:var(--green);font-weight:800;font-size:12.5px;
+  font-family:var(--font-mono);letter-spacing:.3px}
+.changebar{margin-top:8px;padding:8px 11px;border-radius:9px;display:flex;align-items:center;gap:7px;
+  background:color-mix(in srgb,var(--warn) 10%,transparent);border:1px solid color-mix(in srgb,var(--warn) 28%,transparent);
+  color:var(--warn);font-size:12.5px;font-weight:600}
+
+/* medicine detail: keep long label text readable */
+.card .dim[style*="pre-wrap"]{word-break:break-word}
+
+/* ---------------- music: chart numbers + inline spinner ---------------- */
+.chartno{width:24px;flex:0 0 auto;text-align:center;font-family:var(--font-mono);
+  font-size:12px;font-weight:700;color:var(--fg3)}
+.row:nth-child(-n+3) .chartno{color:var(--green)}
+.spin-sm{width:15px;height:15px;border-radius:50%;display:inline-block;
+  border:2px solid var(--line2);border-top-color:var(--green);animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.tile:disabled{opacity:.5}
+.tile small{font-size:10px;color:var(--fg3);margin-top:1px}
+
+/* ---------------- music library: row actions + bottom sheet ---------------- */
+.rowbtn{background:none;border:0;padding:5px;cursor:pointer;display:grid;place-items:center;
+  border-radius:7px;flex:0 0 auto}
+.rowbtn:active{background:var(--s3)}
+.sheet-bg{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.62);
+  display:flex;align-items:flex-end;justify-content:center;animation:fade .16s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{width:100%;max-width:680px;background:var(--s1);border:1px solid var(--line);
+  border-radius:18px 18px 0 0;padding:16px 16px calc(16px + var(--safe-b));
+  animation:up .2s cubic-bezier(.2,.9,.3,1)}
+.steps{margin:6px 0 0;padding-left:20px;font-size:12.5px;line-height:1.85;color:var(--fg2)}
+.steps li{margin-bottom:3px}
+.steps b{color:var(--fg)}
+
+/* ---------------------------------------------------------------- player art
+   A record, not a rounded square.
+
+   THE PAUSE PROBLEM
+   The old version toggled `animation` off when paused. A CSS animation that
+   stops does not hold its current frame — the element snaps back to 0deg, so
+   pausing yanked the artwork upright in one jarring jump. The fix is
+   `animation-play-state:paused`, which freezes the disc exactly where it is,
+   plus a slow ease on resume so it spins up rather than teleporting.
+
+   `prefers-reduced-motion` switches the rotation off entirely rather than
+   merely slowing it. */
+.disc-stage{position:relative;display:grid;place-items:center;
+  width:min(72vw,270px);aspect-ratio:1}
+.art-disc{position:relative;display:grid;place-items:center;
+  width:100%;height:100%;border-radius:50%;
+  background:radial-gradient(circle at 50% 50%,#12100e 0%,#0a0a0a 62%,#050605 100%);
+  box-shadow:0 18px 52px color-mix(in srgb,var(--green) 15%,transparent),0 0 0 1px #ffffff0f inset,0 2px 14px #0009;
+  animation:discspin 18s linear infinite;
+  animation-play-state:paused}
+.art-disc.spin{animation-play-state:running}
+/* Freezes in place instead of snapping back to zero degrees. */
+.art-disc.coast{animation-play-state:paused}
+@keyframes discspin{to{transform:rotate(360deg)}}
+
+/* The pressed grooves. Concentric hairlines, faint enough to read as texture
+   rather than as rings drawn on top of the art. */
+.groove{position:absolute;border-radius:50%;pointer-events:none;
+  border:1px solid #ffffff08}
+.groove.g1{inset:1.5%}
+.groove.g2{inset:5%;border-color:#ffffff0a}
+.groove.g3{inset:9%}
+.groove.g4{inset:13.5%;border-color:#ffffff07}
+
+.art-disc .art{width:74%;height:74%;border-radius:50%;object-fit:cover;
+  box-shadow:0 0 0 1px #ffffff14,0 6px 18px #000000a6}
+.art-disc .art.ph{border-radius:50%;background:var(--s2);display:grid;place-items:center;color:var(--fg3)}
+
+/* A fixed highlight that does NOT rotate with the disc, so the sleeve looks
+   like it is turning under a light rather than carrying its own glare. */
+.art-sheen{position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:linear-gradient(118deg,#ffffff14 0%,#ffffff00 34%,#ffffff00 66%,#ffffff0a 100%);
+  animation:discspin 18s linear infinite reverse;animation-play-state:inherit}
+.art-disc.spin .art-sheen{animation-play-state:running}
+
+.art-hole{position:absolute;width:13%;aspect-ratio:1;border-radius:50%;
+  background:var(--bg);box-shadow:0 0 0 4px #0e1412,0 0 0 5px var(--line2),0 0 0 6px #ffffff0d}
+
+
+/* The ring visualiser: a halo around the sleeve driven by the analyser.
+   --pulse and --glow are written by the animation frame, so the CSS holds the
+   look and JS only supplies two numbers. */
+.disc-stage.ring{transform:scale(var(--pulse,1));transition:transform .08s linear}
+.disc-ring{position:absolute;inset:-9px;border-radius:50%;pointer-events:none;
+  border:1.5px solid color-mix(in srgb,var(--green) 30%,transparent);
+  box-shadow:0 0 var(--glow,0px) color-mix(in srgb,var(--green) 40%,transparent),inset 0 0 calc(var(--glow,0px) / 2) color-mix(in srgb,var(--cyan) 25%,transparent)}
+/* The Glow visualiser: the scale stays still and the bass energy goes
+   into a halo around the sleeve plus a soft ambient wash behind it.
+   --glow is written by the same animation loop as the ring. */
+.disc-stage.glow .art-disc{box-shadow:0 0 var(--glow,0px) color-mix(in srgb,var(--green) 45%,transparent),
+  0 0 calc(var(--glow,0px) * 1.8) color-mix(in srgb,var(--cyan) 20%,transparent),0 18px 44px #000000a0;
+  transition:box-shadow .09s linear}
+.disc-stage.glow::before{content:'';position:absolute;inset:-38px;border-radius:50%;
+  pointer-events:none;background:radial-gradient(circle,color-mix(in srgb,var(--green) 15%,transparent) 0%,transparent 65%);
+  opacity:calc(var(--glow,0px) / 72);transition:opacity .09s linear}
+
+/* ------------------------------------------------------------- visualiser */
+.vizbox{margin-top:10px}
+.viz{width:100%;height:74px;display:block}
+.viz-note{font-size:10.5px;line-height:1.5;color:var(--fg3);text-align:center;
+  padding:10px 6px;max-width:330px;margin:0 auto}
+.vizpick{display:flex;gap:6px;justify-content:center;margin-top:6px;flex-wrap:wrap}
+.vizb{background:var(--s2);border:1px solid var(--line);color:var(--fg3);
+  height:26px;padding:0 9px;border-radius:999px;display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;cursor:pointer;
+  transition:color .15s,border-color .15s,background .15s}
+.vizb.on{color:var(--green);border-color:color-mix(in srgb,var(--green) 30%,transparent);background:color-mix(in srgb,var(--green) 8%,transparent)}
+.vizb:active{transform:scale(.93)}
+
+/* ---------------------------------------------- track facts, as small chips */
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;
+  padding:4px 9px;border-radius:999px;background:var(--s2);
+  border:1px solid var(--line);color:var(--fg2);max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.on{color:var(--green);border-color:color-mix(in srgb,var(--green) 25%,transparent);background:color-mix(in srgb,var(--green) 7%,transparent)}
+
+/* which source answered — plain text, never a badge pretending to be a brand */
+.srcline{display:flex;align-items:center;justify-content:center;gap:7px;
+  margin-top:8px;font-size:11px;color:var(--fg3)}
+.srcline .dot{width:6px;height:6px}
+
+/* --------------------------------------------------------- seek and volume
+   The seek bar draws its own track so buffered-ahead can be shown behind the
+   played portion; the real <input> sits on top, transparent, and keeps all the
+   keyboard and touch behaviour a native range control already has. */
+.seekwrap{position:relative;height:22px;display:flex;align-items:center}
+.seektrack{position:absolute;left:0;right:0;height:4px;border-radius:3px;
+  background:var(--line2);overflow:hidden;pointer-events:none}
+.seektrack .buf{position:absolute;left:0;top:0;height:100%;background:var(--line2);
+  filter:brightness(1.9);transition:width .3s linear}
+.seektrack .played{position:absolute;left:0;top:0;height:100%;
+  background-image:var(--grad);background-color:var(--green)}
+.seek{position:relative;width:100%;margin:0;background:transparent;
+  -webkit-appearance:none;appearance:none;height:22px}
+.seek::-webkit-slider-runnable-track{background:transparent;height:22px}
+.seek::-moz-range-track{background:transparent;height:22px}
+.seek::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:13px;height:13px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 20%,transparent),0 2px 6px #000a;cursor:pointer;margin-top:0}
+.seek::-moz-range-thumb{width:13px;height:13px;border:0;border-radius:50%;
+  background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 20%,transparent);cursor:pointer}
+.seek:disabled::-webkit-slider-thumb{background:var(--fg3);box-shadow:none}
+.times .rem{color:var(--fg3);font-variant-numeric:tabular-nums}
+
+/* ------------------------------------------------------------------- queue */
+.qhead{display:flex;justify-content:space-between;align-items:center;
+  padding:2px 4px 8px;font-size:10.5px;color:var(--fg3);text-transform:uppercase;
+  letter-spacing:.6px}
+.row.qnow{background:color-mix(in srgb,var(--green) 8%,transparent);border-radius:10px}
+.qnum{width:20px}
+/* Three bars that rise and fall — the row that is playing is findable while
+   scrolling a long queue, which a tinted background alone does not achieve. */
+.qbars{width:20px;height:14px;display:flex;align-items:flex-end;gap:2px;flex:0 0 auto}
+.qbars i{flex:1;background:var(--green);border-radius:1px;height:35%;
+  animation:qb .9s ease-in-out infinite}
+.qbars i:nth-child(2){animation-delay:.3s}
+.qbars i:nth-child(3){animation-delay:.6s}
+@keyframes qb{0%,100%{height:30%}50%{height:100%}}
+
+.volrow{display:flex;align-items:center;gap:9px;margin:2px 0 8px;padding:0 2px}
+.volbtn{background:none;border:0;color:var(--fg3);cursor:pointer;padding:3px;
+  display:grid;place-items:center}
+.volbtn:active{transform:scale(.92)}
+.vol{flex:1;accent-color:var(--green);height:3px}
+.volpct{font-size:10px;color:var(--fg3);width:24px;text-align:right}
+
+/* ------------------------------------------------------------------ live TV
+   The player is fixed above the grid so the channel list stays usable while
+   something is on — switching channels should not mean losing your place. */
+.tv-screen{position:fixed;left:0;right:0;top:0;z-index:80;max-width:680px;margin:0 auto;
+  background:#000;box-shadow:0 10px 40px #000c}
+.tv-video{position:relative;aspect-ratio:16/9;background:#000}
+.tv-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:9px;background:#000000d9;color:var(--fg);padding:16px}
+.tv-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:var(--s1);border-top:1px solid var(--line)}
+.tv-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}
+.tv-tile{min-height:112px;gap:5px}
+.tv-logo{width:52px;height:38px;display:grid;place-items:center;
+  background:var(--s2);border-radius:9px;overflow:hidden;color:var(--fg3)}
+.tv-logo img{max-width:100%;max-height:100%;object-fit:contain}
+.tv-tile b{font-size:11px;line-height:1.2}
+.tv-tile small{font-size:10px}
+
+/* ============================================================
+   THEME SYSTEM - Standard + Custom Themes Support
+   Themes applied via JS: document.documentElement.style.setProperty
+   This section ensures light themes and custom themes work correctly
+   ============================================================ */
+
+/* Theme transition for smooth switching */
+:root {
+  --theme-transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+html {
+  transition: var(--theme-transition);
+}
+
+/* Topbar and nav should adapt to theme bg */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+}
+
+.nav {
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+}
+
+/* Light theme specific adjustments - when data-theme is light */
+[data-theme="light"] .topbar,
+[data-theme="light"] .nav {
+  backdrop-filter: blur(16px) saturate(1.2);
+}
+
+[data-theme="light"] .tile {
+  box-shadow:var(--sh-1);
+}
+
+[data-theme="light"] .card {
+  box-shadow:var(--sh-1);
+}
+
+/* Theme-aware scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line2) 80%, transparent);
+}
+
+/* Ensure gradtext works in light theme too */
+[data-theme="light"] .gradtext {
+  filter: brightness(0.9);
+}
+
+/* Custom theme indicator */
+[data-theme="custom"] {
+  /* Custom themes can be any colors, so no specific overrides */
+}
+
+/* W31 Phase 3: the floating .pwa-install-prompt is DELETED (D4) — the
+   install ask now lives in-flow at the end of the home feed
+   (.install-banner in the Phase-3 block at the end of this file). */
+
+/* Settings page specific */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.theme-card {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--s1);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.theme-card:hover {
+  border-color: var(--line2);
+  transform: translateY(-1px);
+}
+
+.theme-card.active {
+  border: 2px solid var(--green);
+  box-shadow: 0 0 12px color-mix(in srgb,var(--green) 15%,transparent);
+}
+
+.theme-colors {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.theme-color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+/* Live check log styling */
+.live-log {
+  background: #000;
+  color: #0f0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  max-height: 250px;
+  overflow: auto;
+  border: 1px solid var(--line2);
+}
+
+.live-log .log-pass { color: #0f0; }
+.live-log .log-fail { color: #f00; }
+.live-log .log-warn { color: #ff0; }
+.live-log .log-info { color: #0ff; }
+
+/* Color picker styling for custom theme maker */
+input[type="color"] {
+  width: 40px;
+  height: 36px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--s1);
+  cursor: pointer;
+}
+
+/* Theme preview */
+.theme-preview {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  margin-top: 12px;
+}
+
+/* Ensure settings checkboxes work in all themes */
+.chk {
+  background: var(--s2);
+  border: 1px solid var(--line);
+}
+
+/* Progress bar for live check */
+.progress-bar {
+  height: 6px;
+  background: var(--line2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--grad);
+  transition: width 0.3s ease;
+}
+
+/* PWA status indicators */
+.pwa-status {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.pwa-badge {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  color: var(--fg2);
+}
+
+.pwa-badge.ok {
+  border-color: var(--green);
+  color: var(--green);
+  background: color-mix(in srgb,var(--green) 10%,transparent);
+}
+
+.pwa-badge.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: color-mix(in srgb,var(--warn) 10%,transparent);
+}
+
+.pwa-badge.bad {
+  border-color: var(--bad);
+  color: var(--bad);
+  background: color-mix(in srgb,var(--bad) 10%,transparent);
+}
+
+/* ------------------------------------------------- trip map, steps, alerts
+   The map is collapsed by default everywhere it appears, so these rules only
+   style a panel the user opened.  Leaflet brings its own class names; they are
+   re-skinned here rather than in a second stylesheet so theme.css stays the only
+   file that decides what this app looks like. */
+.mapslot{margin-top:2px}
+.mapbox{margin-top:10px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--s1)}
+.mapleaf{width:100%}
+.mapnote{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:11.5px;color:var(--fg2)}
+.mapswap{margin-left:6px;background:none;border:0;padding:0;color:var(--green);
+  font:inherit;font-size:11px;font-weight:700;cursor:pointer;text-decoration:underline;
+  text-underline-offset:2px}
+.mapswap:active{opacity:.6}
+.mapnote.sm{border-top:1px solid var(--line);line-height:1.45}
+.mapsketchwrap{padding:8px 8px 0}
+.sketch{display:block;border-radius:10px}
+.leaflet-container{background:#05100D;font-family:var(--font-body);font-size:12px}
+.leaflet-control-attribution{background:rgba(8,11,10,.78)!important;color:var(--fg3)!important;font-size:9.5px!important}
+.leaflet-control-attribution a{color:var(--cyan-dim)!important}
+.leaflet-bar a,.leaflet-bar a:hover{background:var(--s2)!important;color:var(--fg)!important;border-color:var(--line2)!important}
+.leaflet-bar a:hover{background:var(--s3)!important}
+.leaflet-tooltip{background:var(--s2)!important;color:var(--fg)!important;border:1px solid var(--line2)!important;box-shadow:none!important;font-size:11px!important;border-radius:7px!important}
+.leaflet-tooltip-top:before{border-top-color:var(--line2)!important}
+/* turn-by-turn: one row per action, the current one lit */
+.steps2{display:flex;flex-direction:column;margin-top:10px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.stp{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;background:var(--s1);border-bottom:1px solid var(--line)}
+.stp:last-child{border-bottom:0}
+.stp .sp{flex:0 0 auto;width:25px;height:25px;border-radius:8px;display:grid;place-items:center;background:var(--s2);border:1px solid var(--line2);color:var(--green)}
+.stp.walk .sp{color:var(--fg2)}
+.stp.alight .sp{color:var(--warn)}
+.stp.now{background:linear-gradient(180deg,color-mix(in srgb,var(--cyan) 9%,transparent),transparent)}
+.stp.now .sp{border-color:var(--cyan);color:var(--cyan)}
+.stp b{font-size:12.5px;font-weight:600}
+.viachev{border:0;background:var(--s2);color:var(--text);width:17px;height:15px;border-radius:5px;font-size:9px;line-height:1;cursor:pointer;margin-left:5px;vertical-align:1px;transition:transform .18s}
+.viachev:hover{background:var(--s3,#132018);color:var(--green)}
+.viachev.up{transform:rotate(180deg);color:var(--green)}
+.vialist{margin:5px 0 2px;padding:2px 0 2px 10px;border-left:2px solid var(--line2)}
+.viarow{display:flex;align-items:center;gap:7px;width:100%;text-align:left;background:none;border:0;color:var(--text);font-size:12px;padding:3.5px 6px;border-radius:7px;cursor:pointer;font-family:inherit}
+.viarow:hover{background:color-mix(in srgb,var(--green) 6%,transparent)}
+.viarow.now{background:color-mix(in srgb,var(--cyan) 10%,transparent);color:#BFF7FF}
+.vdot{flex:0 0 auto;width:6px;height:6px;border-radius:50%;border:1.4px solid var(--green);background:none}
+.viarow.now .vdot{background:#00E5FF;border-color:#00E5FF}
+.viahint{padding:2px 6px 1px;font-size:10.5px}
+/* one compact row for map / steps / alert, so three buttons stay on one line */
+.btnrow.tripctl{gap:6px}
+.btnrow.tripctl .cat{padding:8px 11px;font-size:12px;letter-spacing:.1px}
+/* the journey clock: one bar, every leg to scale */
+.trow{margin-top:8px}
+.tinp{background:var(--s2);border:1px solid var(--line);border-radius:999px;color:var(--fg);
+  padding:7px 12px;font:inherit;font-size:12.5px;font-weight:600;color-scheme:dark;
+  min-width:112px;appearance:none}
+.tinp:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px color-mix(in srgb,var(--green) 16%,transparent)}
+.sndrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.sndrow .cat{flex:0 0 auto}
+.btnrow.tight{gap:6px}
+.btnrow.tight .cat{font-size:12px;padding:7px 11px;display:flex;gap:5px;align-items:baseline}
+.tl{display:flex;gap:3px;margin-top:11px;height:34px;border-radius:9px;overflow:hidden}
+.tlseg{min-width:26px;display:grid;place-items:center;background:var(--s2);border:1px solid var(--line);
+  border-radius:7px;font-size:11px;font-weight:700;color:var(--bg);position:relative;transition:flex-grow .25s}
+.tlseg b{font-variant-numeric:tabular-nums}
+.tlseg.wait{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--warn) 85%,transparent) 0 5px,color-mix(in srgb,var(--warn) 50%,transparent) 5px 10px);
+  border-color:transparent;color:#241a00}
+.tlseg.walk{background:var(--s3);border-style:dashed;color:var(--fg2)}
+.tlseg.allowance{background:repeating-linear-gradient(90deg,var(--s3) 0 4px,transparent 4px 8px);
+  border-style:dotted;color:var(--fg3)}
+.tlseg.bus{background:var(--green)}
+.tlseg.ride.metro{color:#04120c}
+.tlkeys{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px}
+.tlkey{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg2)}
+.tlkey i{width:9px;height:9px;border-radius:3px;display:inline-block;flex:0 0 auto}
+/* the floating trip bar: one per hub, above the tab bar */
+.tripbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(60px + var(--safe-b));
+  width:min(440px,calc(100% - 20px));z-index:70;background:rgba(8,11,10,.93);backdrop-filter:blur(14px);
+  border:1px solid var(--line2);border-radius:16px;padding:9px 11px;box-shadow:var(--sh-3)}
+.tripbar.hot{border-color:var(--warn);box-shadow:0 0 0 1px color-mix(in srgb,var(--warn) 30%,transparent),var(--sh-3)}
+.tripbar .tb1{display:flex;align-items:center;gap:8px}
+.tripbar .tb1 .grow{flex:1 1 auto;min-width:0}
+.tripbar .tbmeta{margin-top:3px;font-size:11.5px;line-height:1.4;color:var(--dim);
+  display:flex;flex-wrap:wrap;gap:0 6px;align-items:baseline}
+.tripbar .tbmeta b{color:var(--fg2);font-weight:700}
+.tripbar .tb2{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:11.5px;color:var(--warn)}
+.tripbar .tb2 .ico{color:var(--warn)}
+.tripbar .tb3{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline;margin-top:5px;line-height:1.45}
+.tripbar .tbwhy{background:none;border:0;padding:0;margin:0;color:var(--green);font:inherit;
+  font-size:11px;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.armwrap{display:inline-flex;align-items:center;flex-wrap:wrap}
+.list .row.act{background:color-mix(in srgb,var(--green) 9%,transparent);box-shadow:inset 2px 0 0 var(--green)}
+
+/* ================================================================
+   UPGRADE PASS — collapsibles, shelf, toasts, touch, responsive
+   ================================================================ */
+
+/* ---- collapsible sections (kit Section / settings Fold) ---- */
+.sec{margin:16px 0 4px}
+.sec-h{display:flex;align-items:center;gap:8px;width:100%;background:var(--bg);
+  border:0;border-bottom:1px solid var(--line);padding:11px 2px;margin:0;
+  cursor:pointer;color:var(--fg);font:600 14.5px var(--font-body);text-align:left;
+  -webkit-tap-highlight-color:transparent}
+.sec-h.sticky{position:sticky;top:calc(57px + var(--safe-t));z-index:6}
+.sec-h .sec-t{letter-spacing:.2px}
+.sec-badge{font-size:11px;color:var(--fg3);font-weight:500}
+.sec-h .chev,.sec-h svg.chev{margin-left:auto;color:var(--fg3);flex:0 0 auto;
+  transition:transform .22s ease}
+.sec-h.closed .chev,.sec-h.closed svg.chev{transform:rotate(-90deg)}
+.sec-body{display:grid;transition:grid-template-rows .24s ease}
+.sec-inner{overflow:hidden;min-height:0}
+.fold-h{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;
+  padding:0;margin:0 0 4px;cursor:pointer;color:var(--fg);text-align:left;
+  -webkit-tap-highlight-color:transparent}
+.fold-h .chev{color:var(--fg3);flex:0 0 auto}
+
+/* ---- home shelf ---- */
+.shelf{margin:2px 0 4px}
+.shelf-col{display:flex;flex-direction:column;gap:8px;padding-top:10px}
+.shelf-row{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 6px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.shelf-row::-webkit-scrollbar{display:none}
+.shelf-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:40px}
+.cont-card{display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+  background:var(--s1);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:10px 12px;cursor:pointer;color:var(--fg);min-width:0;
+  transition:border-color .18s ease,transform .12s ease}
+.cont-card:active{transform:scale(.985)}
+.cont-card img{width:46px;height:46px;border-radius:9px;object-fit:cover;
+  flex:0 0 auto;background:var(--s3)}
+.cont-ic{width:46px;height:46px;border-radius:9px;background:var(--s3);
+  display:grid;place-items:center;flex:0 0 auto;color:var(--fg2)}
+.cont-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.cont-tx b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cont-tx small{color:var(--fg3);font-size:11.5px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+
+/* ---- labels, status rows, small states ---- */
+.seclabel{font:600 12px var(--font-body);letter-spacing:1.2px;text-transform:uppercase;
+  color:var(--fg3);margin:18px 0 8px}
+.src-meta{color:var(--fg3);font-size:11.5px;font-family:var(--font-mono,monospace)}
+.state.sm{padding:14px 10px;font-size:12.5px}
+
+/* ---- skeleton loaders ---- */
+.skel{border-radius:10px;background:linear-gradient(100deg,var(--s2) 40%,var(--s3) 50%,var(--s2) 60%);
+  background-size:200% 100%;animation:skel 1.15s linear infinite}
+@keyframes skel{to{background-position:-200% 0}}
+
+/* ---- toasts ---- */
+.toasts{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(84px + var(--mini-lift,0px) + var(--safe-b));z-index:300;display:flex;flex-direction:column;
+  gap:8px;align-items:center;pointer-events:none;width:max-content;max-width:92vw}
+.toast{background:var(--s3);border:1px solid var(--line2);color:var(--fg);
+  padding:10px 16px;border-radius:999px;font-size:13px;text-align:center;
+  box-shadow:var(--sh-3);animation:toastin .2s ease}
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ---- scroll to top ---- */
+.scrolltop{position:fixed;right:16px;z-index:65;width:44px;height:44px;border-radius:50%;
+  background:var(--s3);border:1px solid var(--line2);color:var(--fg);
+  display:grid;place-items:center;cursor:pointer;box-shadow:var(--sh-2);
+  transition:transform .15s ease}
+.scrolltop:active{transform:scale(.92)}
+
+/* ---- Omni AI floating button ----
+   z-index 90: above the nav (60), tab bar (65), mini player (70) and
+   banners (80); below the full player / AI screen (100) and sheets
+   (120+), so it never covers a control — the full player simply covers
+   it. The DOCKED spot (bottom-right) clears the nav by 12px and rides
+   --mini-lift above the mini player; the :has() lifts below stack it
+   over the other bottom floats when they are on screen (values grow
+   downward in source order, so the tallest float wins). A dragged
+   position is inline left/top and ignores all of this — it is the
+   user's own spot, respected as dropped. */
+.aifab{position:fixed;z-index:90;width:56px;height:56px;border-radius:50%;
+  border:1px solid color-mix(in srgb,var(--green) 45%,transparent);
+  background:var(--grad);background-color:var(--green);color:#02120a;
+  display:grid;place-items:center;cursor:pointer;touch-action:none;
+  -webkit-tap-highlight-color:transparent;
+  box-shadow:var(--sh-3);
+  animation:aifabpulse 2.6s ease-out infinite;
+  transition:transform .15s ease}
+.aifab:active{transform:scale(.93)}
+.aifab.dragging{animation:none;transform:scale(1.06);
+  box-shadow:var(--sh-3);cursor:grabbing;transition:none}
+@keyframes aifabpulse{
+  0%{box-shadow:var(--sh-3),0 0 0 0 color-mix(in srgb,var(--green) 50%,transparent)}
+  70%{box-shadow:var(--sh-3),0 0 0 16px transparent}
+  100%{box-shadow:var(--sh-3),0 0 0 0 transparent}}
+.aifab.docked{right:16px;bottom:calc(70px + var(--mini-lift,0px) + var(--safe-b))}
+.app:has(.scrolltop) .aifab.docked{bottom:calc(128px + var(--mini-lift,0px) + var(--safe-b))}
+.app:has(.rembanner) .aifab.docked{bottom:calc(142px + var(--mini-lift,0px) + var(--safe-b))}
+.app:has(.tripbar) .aifab.docked{bottom:calc(170px + var(--mini-lift,0px) + var(--safe-b))}
+.aifab-backdrop{position:fixed;inset:0;z-index:315;background:transparent}
+.aifab-menu{position:fixed;z-index:320;width:196px;background:var(--s2);
+  border:1px solid var(--line2);border-radius:14px;padding:6px;
+  box-shadow:var(--sh-3);display:flex;flex-direction:column;gap:2px}
+.aifab-menu-h{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--fg3);padding:7px 12px 4px}
+.aifab-menu button{background:none;border:0;color:var(--fg);text-align:left;
+  padding:10px 12px;border-radius:9px;font-size:13.5px;cursor:pointer;
+  display:flex;gap:8px;align-items:center;font-family:var(--font-body)}
+.aifab-menu button:hover{background:var(--s3)}
+.aifab-menu-note{font-size:11px;color:var(--fg3);padding:4px 12px 8px;line-height:1.45}
+
+/* ---- touch targets: nothing important under ~44px on the phone ---- */
+.iconbtn{width:42px;height:42px}
+.rowbtn{min-width:42px;min-height:42px;border-radius:10px}
+.cbtn{min-width:44px;min-height:44px}
+.mini-btn{min-width:44px;min-height:44px;display:grid;place-items:center}
+.nav button{padding:11px 2px 10px}
+.cat{min-height:38px;display:inline-flex;align-items:center;gap:5px}
+.tab{min-height:46px}
+.tile{min-height:112px}
+.rowbtn,.iconbtn,.cbtn,.cat,.tab{transition:background .16s ease,color .16s ease,transform .12s ease}
+.tile{transition:border-color .18s ease,transform .12s ease}
+.tile:active{transform:scale(.97)}
+
+/* ---- tablet: two-up grids, wider stage, calmer type ---- */
+@media(min-width:641px){
+  .app{max-width:920px}
+  .main-area{padding:0 22px 26px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px}
+  .tv-grid{grid-template-columns:repeat(auto-fill,minmax(124px,1fr))}
+  .hero h1{font-size:56px}
+  .full{max-width:880px;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+  .shelf-col{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+}
+
+/* ---- desktop: the bottom nav becomes a left rail, grids open up ---- */
+@media(min-width:1025px){
+  .app{max-width:1200px;padding-left:96px}
+  .nav{position:fixed;left:0;top:0;bottom:0;width:96px;height:100dvh;z-index:60;
+    display:flex;flex-direction:column;justify-content:flex-start;gap:6px;
+    padding:110px 10px calc(16px + var(--safe-b));margin:0;
+    border-top:0;border-right:1px solid var(--line)}
+  .nav button{flex-direction:column;gap:4px;padding:12px 4px;border-radius:14px;min-height:64px}
+  .mini{left:96px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(142px,1fr))}
+  .tv-grid{grid-template-columns:repeat(auto-fill,minmax(134px,1fr))}
+  .hero h1{font-size:64px}
+  .sec-h.sticky{top:0}
+  .scrolltop{right:28px}
+}
+
+/* ---- large screens: cap the stage, breathe ---- */
+@media(min-width:1440px){
+  .app{max-width:1340px}
+  .main-area{padding:0 30px 30px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(154px,1fr))}
+  .tv-grid{grid-template-columns:repeat(auto-fill,minmax(146px,1fr))}
+  .hero h1{font-size:72px}
+}
+
+
+/* ================================================================
+   DESIGN & MOTION — finish pass over the existing identity.
+   Everything runs through the theme variables; motion is
+   transform/opacity only and yields to reduced-motion. */
+
+/* Presence: a soft pulse on the live dot (chrome only, costs nothing
+   on scroll). The stale state renders without it, by design. */
+.pres-dot{position:relative}
+.pres-dot::after{content:'';position:absolute;inset:-4px;border-radius:50%;
+  border:1px solid var(--green);opacity:0;animation:prespulse 2.4s ease-out infinite}
+@keyframes prespulse{0%{transform:scale(.55);opacity:.55}
+  70%{transform:scale(1.55);opacity:0}100%{transform:scale(1.55);opacity:0}}
+
+/* Keyboard and desktop focus must be as designed as touch. */
+:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:6px}
+::selection{background:var(--green);color:#00110A}
+
+/* Layered surfaces: cards sit ON the background, not in it. */
+.card{box-shadow:var(--sh-1)}
+.cont-card{box-shadow:var(--sh-1)}
+
+/* Glass only on fixed chrome, where the blur area never scrolls. */
+@supports (backdrop-filter:blur(1px)){
+  .topbar{background:color-mix(in srgb,var(--bg) 84%,transparent);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .mini{background:color-mix(in srgb,var(--s1) 86%,transparent);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+}
+
+/* Entry motion for views and cards — a 240ms rise, then stillness. */
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.main-area>div{animation:rise .24s ease both}
+.sec,.shelf .cont-card{animation:rise .24s ease both}
+
+/* Press + hover feedback, consistent across every tappable surface. */
+.btn:active{transform:scale(.97)}
+.cat:active{transform:scale(.95)}
+.rowbtn:active,.iconbtn:active{transform:scale(.92)}
+@media(hover:hover){
+  .tile:hover{transform:translateY(-2px);border-color:var(--line2)}
+  .row:hover{background:rgba(127,127,127,.05)}
+  .cont-card:hover{border-color:var(--line2)}
+  .cat:hover{border-color:var(--line2)}
+}
+
+@media(prefers-reduced-motion:no-preference){
+  html{scroll-behavior:smooth}
+}
+
+/* ================================================================
+   ROUND 2 — premium feel pass. One easing voice for every press,
+   artwork lit on the surface, and the presence dot given a real box
+   inside its pill. Transform/opacity only; reduced motion stills
+   all of it. */
+
+/* One easing curve everywhere the hand lands. The tile keeps its
+   spring (declared with the tile), the disc keeps its analyser
+   timing — everything else speaks this curve. */
+:root{--ease:cubic-bezier(.22,.9,.26,1)}
+.btn,.cat,.chip,.tabs button,.rowbtn,.iconbtn,.cbtn,.tab,.sec-h,.nav button,.mini-btn{
+  transition:background .18s var(--ease),color .18s var(--ease),
+  border-color .18s var(--ease),transform .16s var(--ease),opacity .18s var(--ease)}
+
+/* Presses land softer and closer to the finger than round 1. */
+.tile:active{transform:scale(.96)}
+.cont-card:active{transform:scale(.99)}
+.row:active{background:rgba(127,127,127,.07)}
+.nav button:active{transform:scale(.93)}
+.mini-btn:active{transform:scale(.9)}
+.sec-h:active{opacity:.72}
+.chip:active{transform:scale(.95)}
+
+/* The presence dot, fixed: a span is inline by default, so inside
+   the (non-flex) pill the 7px dot never got a box and never painted.
+   Now it is a real inline-block, and the dot itself breathes, not
+   just its ring. The stale state stays ring-less and still. */
+.pill .dot,.src .dot{display:inline-block}
+.pill .dot{margin-right:6px;vertical-align:0}
+.pres-dot{animation:presbeat 2.4s var(--ease) infinite}
+@keyframes presbeat{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
+
+/* Player surfaces: one shadow + hairline voice shared by the full
+   player's artwork, the spinning disc and the mini bar, so moving
+   between mini and full feels like the same object growing. */
+.art{box-shadow:var(--sh-3),0 0 0 1px var(--line)}
+.art-disc .art{box-shadow:var(--sh-2),0 0 0 1px var(--line)}
+.mini{box-shadow:0 -10px 30px var(--sh-col-soft)}
+.seektrack .played{box-shadow:0 0 10px color-mix(in srgb,var(--green) 45%,transparent)}
+
+/* Artwork fades in as it arrives instead of popping into the row. */
+@keyframes imgin{from{opacity:0}to{opacity:1}}
+.art,.row img,.cont-card img{animation:imgin .35s ease both}
+
+/* Type rhythm + the error toast's red edge (its sound lives in the
+   toaster; this is the matching sight). */
+.sec-t{letter-spacing:-.01em}
+.toast.err{border-color:color-mix(in srgb,var(--bad) 55%,transparent)}
+
+
+/* ================================================================
+   ROUND 3 — discovery, rhythm and reading polish. No audio-chain
+   changes: the shelf learns to introduce itself, search remembers,
+   numbers stop dancing, and long lists render offscreen cheaply.
+   Same variables, same easing voice, transform/opacity motion. */
+
+/* Tabular numbers wherever a figure can change under the eye:
+   counts, timers, sizes, prices, badges. */
+.tnum,.stat .v,.times,.volpct,.seclabel,.sec-badge,.cat,.pill{
+  font-variant-numeric:tabular-nums}
+
+/* The top bar only casts its shadow once the page has moved —
+   at the very top it sits flush, as chrome should. */
+.topbar{transition:box-shadow .2s var(--ease)}
+.topbar.scrolled{box-shadow:var(--sh-1)}
+
+/* Bottom nav: the active tab gains a small gradient foot, so the
+   eye lands on state, not just colour. On the desktop rail the
+   same mark turns upright along the left edge. */
+.nav button{position:relative}
+.nav button::after{content:'';position:absolute;left:50%;bottom:4px;
+  width:0;height:3px;border-radius:3px;opacity:0;
+  background:var(--grad);background-color:var(--green);
+  transform:translateX(-50%);transition:width .2s var(--ease),opacity .2s var(--ease)}
+.nav button.on::after{width:22px;opacity:1}
+@media(min-width:1025px){
+  .nav button::after{left:5px;bottom:auto;top:50%;width:3px;height:0;
+    transform:translateY(-50%);transition:height .2s var(--ease),opacity .2s var(--ease)}
+  .nav button.on::after{width:3px;height:22px}
+}
+
+/* Opening a tool gets the same 240ms rise the home cards use, at
+   view scale. (The .view class outranks the generic child rule.) */
+@keyframes viewin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.main-area>.view{animation:viewin .22s var(--ease) both}
+
+/* Long lists: offscreen rows and tiles cost almost nothing until
+   they near the viewport. The `auto` intrinsic size remembers the
+   real height after first paint, so the scrollbar stays honest. */
+.grid .tile{content-visibility:auto;contain-intrinsic-size:auto 112px}
+.list .row,.list .col{content-visibility:auto;contain-intrinsic-size:auto 52px}
+
+/* Tile anatomy: the subtitle is allowed two lines, then it stops —
+   no card grows taller than its neighbours for a long description. */
+.tile small{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;
+  -webkit-box-orient:vertical;overflow:hidden}
+.tile b{line-height:1.25}
+
+/* Chip rails glide and settle: snap on the category rows, so a
+   half-scrolled chip never rests half-cut at the edge. */
+.cats{scroll-snap-type:x proximity;scroll-padding-left:2px}
+.cats>.cat{scroll-snap-align:start}
+
+/* Section chevrons join the one easing voice. */
+.sec-h .chev,.sec-h svg.chev{transition:transform .22s var(--ease)}
+
+/* Search memory + suggestions, under the home box. */
+.qchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-6px 0 12px}
+.qchips-l{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--fg3);font-weight:600;margin-right:2px}
+.qchip-x{background:none;border:0;color:var(--fg3);display:grid;place-items:center;
+  width:30px;height:30px;border-radius:8px;cursor:pointer}
+.qchip-x:active{transform:scale(.92)}
+
+/* The shelf's first-run face: an invitation, not an absence. */
+.shelf-empty{padding-top:10px}
+.shelf-empty .btnrow{margin-top:10px}
+
+/* Designed empty states share one badge: a quiet icon tile above
+   the line, so "nothing here" reads as a place, not a failure. */
+.state .state-ic{width:46px;height:46px;border-radius:14px;background:var(--s2);
+  border:1px solid var(--line);display:grid;place-items:center;color:var(--fg3)}
+.state .btn{margin-top:2px}
+
+/* Skeleton tiles for grid-shaped loading (TV channels). */
+.skel.tile-skel{height:112px;border-radius:var(--r-sm)}
+
+/* TV logo fallback: when a channel has no usable logo, its initials
+   wear the logo box instead of an empty square. */
+.tv-logo .tv-letter{font-family:var(--font-display);font-size:16px;
+  letter-spacing:.6px;color:var(--green)}
+.tv-bar .tv-letter{font-family:var(--font-display);font-size:13px;
+  letter-spacing:.5px;color:var(--green)}
+.tv-logo img{animation:imgin .35s ease both}
+
+/* Downloader: the result thumbnail joins the fade-in family, and
+   file sizes sit in their own right-aligned, tabular column. */
+.dl-thumb{display:block;width:100%;border-radius:var(--r-sm);
+  animation:imgin .35s ease both}
+.dl-size{font-family:var(--font-mono);font-size:12px;color:var(--fg2);
+  font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+
+/* Settings folds: one divider under every group head, so groups
+   read as groups whether open or shut. */
+.fold-h{padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:12px}
+
+
+/* ================================================================
+   UI AUDIT PASS — reading surfaces, honest chrome, calmer motion.
+   Reader typography gets real script stacks (loaded in index.html,
+   system fonts first so nothing blocks first paint), the paper
+   theme re-skins ONLY the surface it wraps, and the last press
+   animations yield to prefers-reduced-motion. */
+
+/* ---- script typography (R3) ---- */
+:root{
+  --font-ar:'Noto Naskh Arabic','Traditional Arabic','Geeza Pro',serif;
+  --font-ur:'Noto Nastaliq Urdu','Noto Naskh Arabic','Geeza Pro',serif;
+  --font-pa:'Noto Sans Gurmukhi','Raavi','Nirmala UI',sans-serif;
+  --font-dev:'Noto Sans Devanagari','Mangal','Nirmala UI',sans-serif;
+}
+.f-ar{font-family:var(--font-ar)}
+.f-ur{font-family:var(--font-ur);line-height:2.3}
+.f-pa{font-family:var(--font-pa)}
+.f-dev{font-family:var(--font-dev)}
+
+/* ---- paper reader theme (R4): warm light surface, scoped to the
+   reader wrapper so the rest of the app keeps the chosen theme. ---- */
+.reader-paper{
+  --bg:#F1E7CF;--s1:#FBF5E4;--s2:#F6EEDA;--s3:#EEE1C2;
+  --line:#DFCFA6;--line2:#CBB586;
+  --fg:#3A2E1B;--fg2:#6E5C39;--fg3:#8A764F;
+  color-scheme:light;
+}
+.reader-paper .card,.reader-paper .list{background:var(--s1)}
+
+/* ---- reader text-size control (R2) ---- */
+.txtctl{display:inline-flex;align-items:center;gap:6px}
+.txtctl .pct{font-size:11px;color:var(--fg3);min-width:38px;text-align:center;
+  font-variant-numeric:tabular-nums}
+
+/* ---- offline banner (W1): one slim line under the top bar ---- */
+.offlinebar{position:sticky;top:calc(63px + var(--safe-t));z-index:55;
+  display:flex;align-items:center;gap:8px;margin:10px 0 0;
+  padding:9px 13px;border-radius:12px;font-size:12.5px;
+  background:var(--s2);border:1px solid var(--warn);color:var(--fg)}
+
+/* ---- path reminder banner (Wave A): floats above the bottom nav ---- */
+.rembanner{position:fixed;left:12px;right:12px;z-index:80;
+  bottom:calc(86px + env(safe-area-inset-bottom, 0px));
+  display:flex;align-items:center;gap:10px;
+  padding:11px 13px;border-radius:14px;font-size:13.5px;
+  background:var(--s2);border:1px solid var(--green);color:var(--fg);
+  box-shadow:var(--sh-2)}
+.rembanner .main{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+@media (min-width:760px){.rembanner{left:auto;width:420px}}
+
+/* ---- universal-search rows as real buttons (S1) ---- */
+.uni-row{width:100%;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+
+/* ---- TV in landscape phones (T2): the picture gets the height,
+   the bar keeps its row, nothing is cropped. ---- */
+@media (orientation:landscape) and (max-height:540px){
+  .tv-video{aspect-ratio:auto;height:calc(100dvh - 104px)}
+  .tv-video video{object-fit:contain}
+}
+
+/* ---- live-check log follows the theme (Y3) ---- */
+.live-log{background:var(--s2);color:var(--fg2);border:1px solid var(--line);
+  font-family:var(--font-mono);font-size:10.5px;padding:10px;border-radius:8px;
+  max-height:250px;overflow:auto}
+.live-log .log-pass{color:var(--green)}
+.live-log .log-fail{color:var(--bad)}
+.live-log .log-warn{color:var(--warn)}
+.live-log .log-info{color:var(--cyan)}
+.live-log .log-dim{color:var(--fg3)}
+
+/* ---- reduced motion (X2): springs and press scales go still too,
+   not just the keyframed animations the earlier blocks covered. ---- */
+
+/* ================= home navigation: category cards, category view,
+   tool-open flight =================
+   Home's browsing surface is one large card per category; a category
+   opens as its own view whose tiles cascade in; and opening a tool
+   flies the tapped tile into the top bar (the .flywrap below). Every
+   motion here is transform/opacity on the house easing curve, and the
+   reduced-motion block at the end stills all of it. */
+
+/* ---- category cards ---- */
+.catgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.catcard{position:relative;display:flex;align-items:flex-start;gap:11px;width:100%;
+  text-align:left;background:var(--s1);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 12px;cursor:pointer;color:var(--fg);
+  transition:transform .16s var(--ease),border-color .18s var(--ease);
+  animation:tilein .38s var(--ease) both;animation-delay:calc(var(--i,0)*45ms)}
+.catcard:active{transform:scale(.97);border-color:var(--ca,var(--green))}
+.catcard-ic{flex:0 0 auto;display:grid;place-items:center;width:46px;height:46px;border-radius:14px;
+  background:color-mix(in srgb,var(--ca,var(--green)) 13%,transparent);
+  color:var(--ca,var(--green))}
+.catcard-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.catcard-n{display:flex;align-items:center;gap:7px}
+.catcard-n b{font-size:14px;font-weight:700;letter-spacing:-.2px;white-space:nowrap}
+.catcard-n2{font-size:10.5px;font-weight:700;color:var(--ca,var(--green));
+  background:color-mix(in srgb,var(--ca,var(--green)) 13%,transparent);
+  border-radius:99px;padding:1px 7px;font-variant-numeric:tabular-nums}
+.catcard-d{font-size:11px;color:var(--fg2);line-height:1.3}
+.catcard-p{font-size:10.5px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.catcard-chev{flex:0 0 auto;color:var(--fg3);transform:rotate(-90deg);margin-top:3px}
+@media(min-width:1025px){.catgrid{grid-template-columns:repeat(auto-fill,minmax(196px,1fr))}}
+
+/* ---- category view ---- */
+@keyframes tilein{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+.catview-h{display:flex;align-items:center;gap:13px;padding:16px 14px;margin-bottom:14px;
+  border-radius:var(--r);border:1px solid var(--line);
+  background:linear-gradient(150deg,color-mix(in srgb,var(--ca,var(--green)) 12%,transparent),transparent 65%),var(--s1)}
+.catview-ic{position:relative;flex:0 0 auto;display:grid;place-items:center;width:58px;height:58px;
+  border-radius:17px;background:color-mix(in srgb,var(--ca,var(--green)) 15%,transparent);
+  color:var(--ca,var(--green));animation:catpop .34s var(--ease) both}
+.catview-ic::after{content:'';position:absolute;inset:0;border-radius:17px;
+  border:2px solid var(--ca,var(--green));opacity:0;animation:catring .55s var(--ease) .06s both}
+@keyframes catpop{0%{transform:scale(.5) rotate(-10deg);opacity:0}
+  60%{transform:scale(1.12) rotate(3deg);opacity:1}100%{transform:scale(1) rotate(0)}}
+@keyframes catring{0%{transform:scale(.8);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+.catview-tx{min-width:0}
+.catview-tx h2{font-size:21px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+.catview-tx p{font-size:12px;color:var(--fg2);margin-top:3px;line-height:1.35}
+.catview-grid .tile{animation:tilein .38s var(--ease) both;animation-delay:calc(var(--i,0)*38ms)}
+
+/* ---- tool-open flight: the tapped tile's ghost, flown to the top bar ---- */
+.flywrap{position:fixed;z-index:200;pointer-events:none;overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  background:var(--s1);border:1px solid var(--green);border-radius:var(--r-sm);
+  padding:15px 9px;color:var(--fg);text-align:center;
+  box-shadow:var(--sh-3);will-change:transform;
+  transition:transform .3s var(--ease),opacity .3s var(--ease),border-radius .3s var(--ease)}
+.flywrap .ic{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;
+  background:var(--s3);color:var(--green)}
+.flywrap-tx{display:flex;flex-direction:column;align-items:center;gap:2px;transition:opacity .08s linear}
+.flywrap-tx b{font-size:12px;font-weight:600}
+.flywrap-tx small{font-size:10px;color:var(--fg3);line-height:1.25}
+
+/* ---- the new home motion, stilled ---- */
+
+/* ---- wave B: stream bar, recorder, games (radio / podcasts / recorder / games) ---- */
+.stream-bar{position:fixed;left:0;right:0;bottom:calc(58px + var(--safe-b) + var(--mini-lift,0px));
+  z-index:65;display:flex;align-items:center;gap:10px;padding:9px 12px;
+  background:color-mix(in srgb,var(--s1) 92%,transparent);backdrop-filter:blur(10px);
+  border-top:1px solid var(--line)}
+.stream-bar .main{flex:1}
+.stream-art{width:40px;height:40px;border-radius:10px;object-fit:cover;flex:0 0 auto;background:var(--s2)}
+.stream-art-ph{display:grid;place-items:center;color:var(--fg3)}
+.stream-seek{width:100%;height:22px;accent-color:var(--green);margin-top:2px}
+.stream-err{position:absolute;left:12px;right:12px;bottom:calc(100% + 6px);
+  background:var(--s2);border:1px solid var(--bad);color:var(--fg2);
+  padding:7px 10px;border-radius:10px}
+.stream-play{background:color-mix(in srgb,var(--green) 16%,transparent);border:1px solid color-mix(in srgb,var(--green) 40%,transparent);
+  color:var(--green);width:40px;height:40px;border-radius:50%;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
+.stream-play:active{transform:scale(.94)}
+.row.stream-on{border-color:color-mix(in srgb,var(--green) 45%,transparent)}
+@media(min-width:1025px){.stream-bar{left:96px}}
+
+.rec-btn{width:92px;height:92px;border-radius:50%;border:2px solid color-mix(in srgb,var(--bad) 65%,transparent);
+  background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad);cursor:pointer;
+  display:grid;place-items:center;margin:0 auto}
+.rec-btn.on{background:var(--bad);color:#fff;animation:recpulse 1.6s ease-in-out infinite}
+@keyframes recpulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--bad) 45%,transparent)}
+  50%{box-shadow:0 0 0 14px transparent}}
+.rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--bad);
+  vertical-align:middle;animation:recpulse 1.6s ease-in-out infinite}
+
+.g2048{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
+  background:var(--s2);border:1px solid var(--line);border-radius:16px;padding:10px;margin-top:10px;
+  touch-action:none;user-select:none}
+.g2048-cell{aspect-ratio:1;display:grid;place-items:center;border-radius:10px;
+  background:var(--s1);color:var(--fg3);font-weight:800;font-size:clamp(17px,5.4vw,26px);
+  font-variant-numeric:tabular-nums;transition:background .12s var(--ease)}
+.g2048-cell.v2{background:color-mix(in srgb,var(--green) 10%,var(--s1));color:var(--fg)}
+.g2048-cell.v4{background:color-mix(in srgb,var(--green) 18%,var(--s1));color:var(--fg)}
+.g2048-cell.v8{background:color-mix(in srgb,var(--green) 28%,var(--s1));color:var(--fg)}
+.g2048-cell.v16{background:color-mix(in srgb,var(--green) 38%,var(--s1));color:var(--fg)}
+.g2048-cell.v32{background:color-mix(in srgb,var(--cyan) 30%,var(--s1));color:var(--fg)}
+.g2048-cell.v64{background:color-mix(in srgb,var(--cyan) 45%,var(--s1));color:var(--fg)}
+.g2048-cell.v128{background:color-mix(in srgb,var(--warn) 38%,var(--s1));color:var(--fg);font-size:clamp(14px,4.6vw,22px)}
+.g2048-cell.v256{background:color-mix(in srgb,var(--warn) 55%,var(--s1));color:var(--fg);font-size:clamp(14px,4.6vw,22px)}
+.g2048-cell.v512{background:color-mix(in srgb,var(--bad) 42%,var(--s1));color:var(--fg);font-size:clamp(14px,4.6vw,22px)}
+.g2048-cell.v1024{background:color-mix(in srgb,var(--bad) 60%,var(--s1));color:#fff;font-size:clamp(12px,4vw,19px)}
+.g2048-cell.v2048{background:var(--green);color:#00110A;font-size:clamp(12px,4vw,19px)}
+.g2048-cell.v4096,.g2048-cell.v8192{background:var(--cyan);color:#001018;font-size:clamp(12px,4vw,19px)}
+.g2048-over{position:absolute;inset:0;display:flex;flex-direction:column;gap:8px;
+  align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg) 78%,transparent);
+  backdrop-filter:blur(2px);border-radius:16px;z-index:3;text-align:center;padding:16px}
+.g2048-over b{font-size:20px}
+.gpad{display:grid;grid-template-columns:repeat(3,64px);gap:6px;justify-content:center;margin-top:10px}
+.gpad .btn{height:46px;display:grid;place-items:center}
+.snake-cv{width:100%;height:auto;display:block;border-radius:16px;border:1px solid var(--line);touch-action:none}
+.mem-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.mem-card{aspect-ratio:1;border-radius:14px;border:1px solid var(--line);background:var(--s2);
+  color:var(--fg3);display:grid;place-items:center;cursor:pointer;
+  transition:transform .18s var(--ease),background .18s var(--ease)}
+.mem-card:active{transform:scale(.95)}
+.mem-card.up{background:color-mix(in srgb,var(--cyan) 18%,var(--s1));color:var(--fg)}
+.mem-card.done{background:color-mix(in srgb,var(--green) 20%,var(--s1));color:var(--green);
+  border-color:color-mix(in srgb,var(--green) 45%,transparent)}
+
+/* ------------------------------------------------------- mini-games arcade */
+.cvwrap{position:relative;margin-top:10px}
+.gcv{width:100%;aspect-ratio:1;display:block;border-radius:16px;border:1px solid var(--line);touch-action:none}
+.arc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:9px;margin-top:12px}
+.arc-card{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px;border-radius:var(--r-md);
+  background:var(--s1);border:1px solid var(--line);cursor:pointer;text-align:left;min-height:104px;color:var(--fg)}
+.arc-card b{font-size:13.5px;line-height:1.25}
+.arc-card small{color:var(--fg3);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
+.arc-ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:var(--green);
+  background:color-mix(in srgb,var(--green) 13%,transparent);margin-bottom:4px}
+.arc-best{margin-top:auto;font-size:10.5px;color:var(--warn);font-weight:600}
+.mole-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:12px}
+.mole{aspect-ratio:1.25;border-radius:14px;border:1px solid var(--line);background:var(--s2);display:grid;place-items:center;cursor:pointer;color:var(--warn)}
+.mole.up{background:color-mix(in srgb,var(--warn) 20%,var(--s2));border-color:var(--warn)}
+.mole-hole{width:44%;height:16%;border-radius:50%;background:var(--line)}
+.reflex-panel{width:100%;min-height:210px;margin-top:12px;border-radius:16px;border:1px solid var(--line);
+  display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;cursor:pointer;color:var(--fg)}
+.aim-box{position:relative;margin-top:12px;height:264px;border-radius:16px;border:1px solid var(--line);background:var(--s2);overflow:hidden}
+.aim-tgt{position:absolute;border-radius:50%;border:2px solid var(--fg);cursor:pointer;padding:0;
+  background:radial-gradient(circle,var(--err) 0 26%,var(--fg) 27% 52%,var(--err) 53% 100%)}
+.aim-start{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+.aim-clock{position:absolute;right:10px;top:8px;font-weight:700;color:var(--fg3)}
+.star-tgt{position:absolute;transform:translate(-50%,-50%);background:none;border:0;cursor:pointer;color:var(--warn);display:grid;place-items:center;padding:0}
+.stroop-card{margin-top:12px;padding:26px 12px;border-radius:16px;border:1px solid var(--line);background:var(--s2);
+  display:flex;flex-direction:column;gap:8px;align-items:center}
+.stroop-word{font-size:34px;font-weight:800;letter-spacing:1px}
+.ms-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:3px}
+.ms-cell{aspect-ratio:1;border-radius:6px;border:1px solid var(--line);background:color-mix(in srgb,var(--green) 14%,var(--s2));
+  display:grid;place-items:center;font-size:13px;cursor:pointer;color:var(--fg);padding:0;min-height:30px}
+.ms-cell.open{background:var(--s2)}
+.ms-cell.mine{background:color-mix(in srgb,var(--err) 32%,var(--s2));color:var(--err)}
+.s15-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:12px;max-width:340px}
+.s15-tile{aspect-ratio:1;border-radius:12px;border:1px solid var(--line);background:var(--s2);font-size:19px;font-weight:700;cursor:pointer;color:var(--fg)}
+.s15-tile.blank{background:transparent;border-style:dashed;cursor:default}
+.s15-tile.done{background:color-mix(in srgb,var(--green) 18%,var(--s2))}
+.lo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:12px;max-width:340px}
+.lo-cell{aspect-ratio:1;border-radius:12px;border:1px solid var(--line);background:var(--s2);cursor:pointer;padding:0}
+.lo-cell.on{background:color-mix(in srgb,var(--warn) 68%,var(--s1));border-color:var(--warn);
+  box-shadow:0 0 14px color-mix(in srgb,var(--warn) 45%,transparent)}
+.fi-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin-top:12px;max-width:360px}
+.fi-cell{aspect-ratio:1;border-radius:3px}
+.fi-btn{flex:1;height:44px;border-radius:10px;border:1px solid var(--line);cursor:pointer}
+.fi-btn:disabled{opacity:.35;cursor:default}
+.maze-svg{width:100%;display:block;border-radius:16px;border:1px solid var(--line)}
+.hanoi{display:flex;gap:10px;margin-top:14px}
+.hanoi-peg{flex:1;min-height:170px;border-radius:12px;border:1px solid var(--line);background:var(--s2);cursor:pointer;
+  display:flex;flex-direction:column-reverse;align-items:center;padding:8px 6px;gap:3px;position:relative}
+.hanoi-peg.held{border-color:var(--green)}
+.hanoi-rod{position:absolute;left:50%;top:10px;bottom:16px;width:4px;margin-left:-2px;border-radius:2px;background:var(--line)}
+.hanoi-base{width:100%;height:5px;border-radius:3px;background:var(--line)}
+.hanoi-disk{height:19px;border-radius:6px;background:color-mix(in srgb,var(--cyan) 55%,var(--s1));color:var(--fg);
+  display:grid;place-items:center;font-size:11px;font-weight:700;position:relative;z-index:1;border:1px solid var(--line)}
+.db-wrap{margin-top:14px;max-width:330px}
+.db-row{display:flex;align-items:center}
+.db-dot{width:11px;height:11px;border-radius:50%;background:var(--fg3);flex:none}
+.db-edge{background:var(--s2);border:1px solid var(--line);cursor:pointer;padding:0;flex:none}
+.db-edge.h{width:58px;height:13px;border-radius:7px}
+.db-edge.v{width:13px;height:52px;border-radius:7px}
+.db-edge.on{background:var(--green);border-color:var(--green)}
+.db-box{width:58px;height:52px;display:grid;place-items:center;font-size:10px;font-weight:700;color:var(--fg3);flex:none}
+.db-box.mine{background:color-mix(in srgb,var(--green) 20%,transparent);color:var(--green)}
+.db-box.theirs{background:color-mix(in srgb,var(--err) 18%,transparent);color:var(--err)}
+.simon-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;max-width:330px}
+.simon-pad{aspect-ratio:1.35;border-radius:16px;border:1px solid var(--line);cursor:pointer;opacity:.42;padding:0}
+.simon-pad.lit{opacity:1;box-shadow:0 0 22px color-mix(in srgb,var(--fg) 22%,transparent)}
+.gseq-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;max-width:330px}
+.gseq-cell{aspect-ratio:1;border-radius:12px;border:1px solid var(--line);background:var(--s2);cursor:pointer;padding:0}
+.gseq-cell.lit{background:color-mix(in srgb,var(--cyan) 62%,var(--s1));border-color:var(--cyan)}
+.math-card{margin-top:12px;padding:22px 12px;border-radius:16px;border:1px solid var(--line);background:var(--s2);
+  display:flex;flex-direction:column;gap:6px;align-items:center}
+.math-q{font-size:31px;font-weight:800;letter-spacing:.5px}
+.type-line{margin-top:12px;padding:15px;border-radius:14px;border:1px solid var(--line);background:var(--s2);
+  font-size:16.5px;line-height:1.65;font-family:ui-monospace,monospace}
+.type-line span.ok{color:var(--green)}
+.type-line span.bad{color:var(--err);text-decoration:underline}
+.wg-word{display:flex;gap:6px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+.wg-slot{width:29px;height:37px;border-bottom:3px solid var(--fg3);display:grid;place-items:center;font-size:19px;font-weight:800}
+.wg-slot.shown{border-color:var(--green)}
+.wg-miss{display:flex;gap:6px;justify-content:center;margin-top:12px}
+.wg-dot{width:11px;height:11px;border-radius:50%;background:var(--green)}
+.wg-dot.spent{background:var(--err)}
+.wg-keys{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-top:14px}
+.wg-key{width:42px;height:44px;border-radius:9px;border:1px solid var(--line);background:var(--s2);color:var(--fg);
+  font-weight:700;cursor:pointer;padding:0}
+.wg-key.hit{background:color-mix(in srgb,var(--green) 22%,var(--s2))}
+.wg-key.miss{background:color-mix(in srgb,var(--err) 16%,var(--s2));opacity:.55}
+.wg-key:disabled{cursor:default}
+.mm-rows{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+.mm-row{display:flex;align-items:center;gap:12px;padding:8px 11px;border-radius:11px;border:1px solid var(--line);background:var(--s2)}
+.mm-row.current{border-style:dashed}
+.mm-pegs{display:inline-flex;gap:6px}
+.mm-peg{width:23px;height:23px;border-radius:50%;border:1px solid var(--line);display:inline-block}
+.mm-peg.empty{background:var(--s1)}
+.mm-fb{display:inline-flex;gap:4px;margin-left:auto}
+.mm-pin{width:11px;height:11px;border-radius:50%;display:inline-block}
+.mm-pin.dark{background:var(--fg)}
+.mm-pin.light{background:var(--s1);border:1.5px solid var(--fg3)}
+.mm-palette{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+.mm-pal{width:44px;height:44px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
+.sud-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:2px;margin-top:12px;max-width:380px}
+.sud-cell{aspect-ratio:1;border-radius:5px;border:1px solid var(--line);background:var(--s2);font-size:15.5px;cursor:pointer;color:var(--cyan);padding:0}
+.sud-cell.given{color:var(--fg);font-weight:700}
+.sud-cell.sel{border-color:var(--green);background:color-mix(in srgb,var(--green) 16%,var(--s2))}
+.sud-cell.bb{margin-bottom:4px}
+.sud-cell.br{margin-right:4px}
+.sud-pad{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:11px;max-width:380px}
+.sud-pad .btn{min-height:44px}
+.ttt-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;max-width:320px}
+.ttt-cell{aspect-ratio:1;border-radius:14px;border:1px solid var(--line);background:var(--s2);font-size:33px;font-weight:800;cursor:pointer}
+.ttt-cell.x{color:var(--green)}
+.ttt-cell.o{color:var(--err)}
+.c4-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:12px;padding:9px;border-radius:14px;
+  border:1px solid var(--line);background:color-mix(in srgb,var(--cyan) 10%,var(--s2));max-width:360px}
+.c4-cell{aspect-ratio:1;border-radius:50%;background:var(--s1);border:1px solid var(--line)}
+.c4-cell.you{background:var(--err)}
+.c4-cell.cpu{background:var(--warn)}
+.c4-cell.win{box-shadow:0 0 0 2.5px var(--fg)}
+.c4-cols{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:360px;padding:0 9px;margin-top:6px}
+.c4-cols .btn{min-height:42px}
+.rv-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:3px;margin-top:12px;padding:8px;border-radius:14px;
+  border:1px solid var(--line);background:color-mix(in srgb,var(--green) 9%,var(--s2));max-width:360px}
+.rv-cell{aspect-ratio:1;border-radius:6px;border:1px solid var(--line);background:transparent;display:grid;place-items:center;cursor:pointer;padding:0}
+.rv-disc{width:82%;height:82%;border-radius:50%;display:block}
+.rv-disc.you{background:var(--fg)}
+.rv-disc.cpu{background:#101613;background:var(--s2);border:2px solid var(--fg3)}
+.rv-dot{width:26%;height:26%;border-radius:50%;background:color-mix(in srgb,var(--fg) 38%,transparent);display:block}
+.rv-cell.legal{cursor:pointer}
+.pcard{width:86px;height:118px;border-radius:11px;border:1px solid var(--line);background:var(--s1);color:var(--fg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:none}
+.pcard b{font-size:27px}
+.pcard span{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--fg3)}
+.pcard.red{color:var(--err)}
+.pcard.red span{color:var(--err)}
+.pcard.back{background:color-mix(in srgb,var(--cyan) 16%,var(--s2));color:var(--cyan)}
+.pcard.sm{width:56px;height:76px;border-radius:8px}
+.pcard.sm b{font-size:19px}
+.pcard.sm span{font-size:8px}
+.hl-stage{display:flex;align-items:center;gap:14px;justify-content:center;margin-top:14px}
+.hl-arrow{color:var(--fg3)}
+.bj-table{margin-top:12px;padding:13px;border-radius:14px;border:1px solid var(--line);background:color-mix(in srgb,var(--green) 8%,var(--s2))}
+.bj-row{display:flex;flex-direction:column;gap:7px;padding:6px 0}
+.bj-cards{display:flex;gap:7px;flex-wrap:wrap;min-height:76px}
+.rps-stage{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding:15px;
+  border-radius:14px;border:1px solid var(--line);background:var(--s2)}
+.rps-side{display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--fg);font-size:11px;text-transform:capitalize}
+.dice-stage{display:flex;gap:12px;margin-top:12px}
+.dice-side{flex:1;display:flex;flex-direction:column;gap:8px;align-items:center;padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--s2)}
+.dice-pair{display:flex;gap:8px}
+.die{width:46px;height:46px;border-radius:10px;background:var(--s1);border:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:7px;gap:2px}
+.die-pip{border-radius:50%}
+.die-pip.on{background:var(--fg)}
+.wheel-wrap{position:relative;width:min(280px,78vw);margin:14px auto 0}
+.wheel-svg{width:100%;display:block}
+.wheel-pin{position:absolute;left:50%;top:-7px;transform:translateX(-50%);z-index:2;width:0;height:0;
+  border-left:9px solid transparent;border-right:9px solid transparent;border-top:15px solid var(--err)}
+.coin-stage{display:flex;flex-direction:column;align-items:center;gap:11px;margin-top:14px}
+.coin{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;font-size:31px;font-weight:800;
+  background:color-mix(in srgb,var(--warn) 34%,var(--s1));border:2.5px solid var(--warn);color:var(--fg)}
+.coin.flipping{animation:coinflip .7s ease}
+@keyframes coinflip{0%{transform:rotateY(0)}100%{transform:rotateY(720deg)}}
+
+/* ------------------------------------------------ Android app mode
+ * Everything below applies only inside the native app shell
+ * (html.app-mode, set by core/app-bridge when window.OmniApp
+ * exists). The web build never carries the class, so none of these
+ * rules can change the browser experience. */
+.app-greet{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin:8px 0 2px}
+.app-greet h1{font-size:30px;line-height:1.08;margin:0}
+.apptabs{position:sticky;bottom:calc(10px + var(--safe-b));z-index:65;display:flex;gap:2px;
+  margin-top:auto;margin-left:12px;margin-right:12px;padding:6px;border-radius:999px;
+  background:color-mix(in srgb,var(--s2) 94%,transparent);backdrop-filter:blur(18px);
+  border:1px solid var(--line);box-shadow:var(--sh-2)}
+.apptabs button{flex:1;background:none;border:0;color:var(--fg3);padding:6px 2px 5px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;
+  font-family:var(--font-body);border-radius:999px}
+.apptabs button small{font-size:10px;font-weight:600}
+.apptabs button.on{color:var(--green);background:color-mix(in srgb,var(--green) 13%,transparent)}
+.app-mode .mini{bottom:calc(96px + var(--safe-b))}
+.app-mode .catcard{animation:tilein .45s both;animation-delay:calc(var(--i,0)*38ms)}
+.catcard.editing{cursor:default}
+.catcard.is-hidden{opacity:.42}
+.catcard-ctl{display:flex;gap:6px;align-items:center;flex:0 0 auto}
+.editpanel{background:var(--s2);border:1px solid var(--line);border-radius:16px;
+  padding:14px;margin-bottom:12px}
+.editrow{display:flex;flex-direction:column;gap:9px;margin-top:9px}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--fg2);cursor:pointer}
+.chk input{margin-top:2px;accent-color:var(--green)}
+.edittools{display:flex;flex-wrap:wrap;gap:6px;max-height:190px;overflow:auto;margin-top:8px}
+.edittools .cat.on,.shelf-row .cat.on{color:var(--green);border-color:color-mix(in srgb,var(--green) 55%,transparent)}
+.chip-x{display:inline-flex;align-items:center;margin-left:5px;color:#ff6b6b}
+
+/* ---------------------------------------------------------- Party Mode */
+.party-head{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.party-kicker{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+  letter-spacing:.22em;color:var(--green)}
+.party-title{font-size:30px;font-weight:800;text-transform:uppercase;letter-spacing:-.01em;
+  line-height:1.02;margin-top:2px}
+.party-stepno{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.18em;color:var(--fg2)}
+.party-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:420px){.party-grid{grid-template-columns:1fr}}
+.party-card{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;
+  background:#000;border:1px solid var(--s3);border-radius:14px;padding:16px;cursor:pointer;
+  color:var(--fg);min-height:86px}
+.party-card:hover{border-color:color-mix(in srgb,var(--green) 45%,transparent)}
+.party-card.on{border-color:var(--green);background:color-mix(in srgb,var(--green) 7%,#000)}
+.party-card:disabled{opacity:.45;cursor:default}
+.party-card-t{font-size:19px;font-weight:800;text-transform:uppercase;letter-spacing:-.01em;line-height:1.05}
+.party-card-d{font-size:12px;color:var(--fg2)}
+.party-building{display:flex;flex-direction:column;align-items:center;gap:12px;padding:44px 0}
+.party-stats{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.party-thumb{width:46px;height:46px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:var(--s3)}
+.party-thumb.ph{display:grid;place-items:center}
+.party-energy{font-size:9px;letter-spacing:2px;color:var(--green);flex:0 0 auto}
+.party-deck{position:relative;overflow:hidden;background:#000;border:1px solid var(--s3);
+  border-radius:18px;padding:18px 16px 20px}
+/* The old .party-wipe gradient streak was replaced by the shared
+   TrackFx overlay (end of this file) — same slash, full choreography. */
+.party-deck-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.party-nowlabel{margin-top:16px;font-size:11px;font-weight:700;letter-spacing:.24em;color:var(--green)}
+.party-artwrap{position:relative;width:min(240px,62vw);aspect-ratio:1;margin:14px auto 4px;
+  --pulse:1;--glow:0px}
+.party-artwrap.pulse .party-art{transform:scale(var(--pulse));
+  box-shadow:0 0 var(--glow) color-mix(in srgb,var(--green) 55%,transparent)}
+.party-art{width:100%;height:100%;border-radius:16px;object-fit:cover;background:var(--s3);
+  display:block;transition:transform .12s ease}
+.party-art.ph{display:grid;place-items:center;color:var(--fg2)}
+.party-paused{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+  font-size:52px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;
+  color:transparent;-webkit-text-stroke:2px var(--green);transform:rotate(-8deg)}
+.party-nowtitle{margin-top:12px;text-align:center;font-size:clamp(21px,6vw,30px);font-weight:800;
+  text-transform:uppercase;letter-spacing:-.01em;line-height:1.04;
+  animation:partyTitleLand .8s cubic-bezier(.16,1,.3,1) both}
+.party-nowartist{text-align:center;color:var(--fg2);font-size:13.5px;margin-top:3px}
+.party-viz{margin-top:12px}
+.party-viz-canvas{width:100%;height:74px;display:block}
+.party-viz-modes{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px}
+.party-progress{margin-top:14px}
+.party-progress-track{position:relative;height:6px;border-radius:3px;background:var(--s3);overflow:hidden}
+.party-progress-hook{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--green) 38%,transparent)}
+.party-progress-fill{position:absolute;top:0;bottom:0;left:0;background:var(--green);border-radius:3px}
+.party-times{display:flex;justify-content:space-between;font-size:11px;color:var(--fg2);margin-top:4px}
+.party-controls{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px}
+.party-playbtn{width:62px;height:62px;border-radius:50%;background-color:var(--green);
+  background-image:var(--grad);color:#00110A;display:grid;place-items:center}
+
+/* ------------------------------------------------- track-change FX
+   The shared TrackFx overlay (ui/TrackFx.jsx), fired on every track
+   change in the full player and — stronger — in the Party deck.
+   Choreography (~0.9s, transform/opacity only): the outgoing title
+   slashes out left, a black slash panel sweeps across and masks the
+   swap with the accent band riding its edge in difference blend, and
+   the incoming title lands huge — letter-spacing condensing from wide
+   to tight as it fades in — then clears to the settled real title,
+   which runs the same landing in miniature (partyTitleLand /
+   fullTitleLand above). Artwork settles with a fade + slight scale
+   (.art-in / .party-artx) and the mini bar's text ticks up (.miniIn).
+   Nothing here touches playback: the audio changes first, this only
+   follows. */
+.tfx{position:absolute;inset:0;z-index:60;overflow:hidden;pointer-events:none}
+.tfx-shade{position:absolute;top:-14%;bottom:-14%;left:0;width:150%;background:#000;opacity:.94;
+  transform:translateX(-135%) skewX(-14deg);
+  animation:tfxShade .74s cubic-bezier(.76,0,.18,1) .03s both}
+@keyframes tfxShade{to{transform:translateX(125%) skewX(-14deg)}}
+.tfx-band{position:absolute;top:-14%;bottom:-14%;left:0;width:13%;background:var(--green);
+  mix-blend-mode:difference;opacity:0;
+  transform:translateX(-60vw) skewX(-14deg);
+  animation:tfxBand .62s cubic-bezier(.76,0,.18,1) .13s both}
+@keyframes tfxBand{0%{transform:translateX(-60vw) skewX(-14deg);opacity:0}
+  12%{opacity:1}88%{opacity:1}
+  100%{transform:translateX(118vw) skewX(-14deg);opacity:0}}
+/* Stage two of the wipe: a wider band in the incoming artwork's own
+   colour (TrackFx sets --tint; the green accent is the fallback),
+   riding just behind the shade panel and ahead of the accent band. */
+.tfx-band2{position:absolute;top:-14%;bottom:-14%;left:0;width:27%;
+  background:var(--tint,var(--green));opacity:0;
+  transform:translateX(-70vw) skewX(-14deg);
+  animation:tfxBand2 .8s cubic-bezier(.76,0,.18,1) .07s both}
+@keyframes tfxBand2{0%{transform:translateX(-70vw) skewX(-14deg);opacity:0}
+  14%{opacity:.5}82%{opacity:.5}
+  100%{transform:translateX(122vw) skewX(-14deg);opacity:0}}
+.tfx-out,.tfx-in{position:absolute;left:5%;right:5%;text-align:center;
+  font-family:var(--font-display);font-weight:400;text-transform:uppercase;line-height:.95;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;
+  overflow-wrap:anywhere}
+.tfx-out{top:35%;font-size:clamp(26px,6.5vw,54px);color:var(--fg);
+  animation:tfxOut .3s cubic-bezier(.5,0,.8,.4) both}
+@keyframes tfxOut{from{transform:translateX(0) skewX(0deg);opacity:1}
+  to{transform:translateX(-9vw) skewX(-10deg);opacity:0}}
+.tfx-in{top:29%;font-size:clamp(32px,8vw,68px);color:var(--fg);opacity:0;
+  animation:tfxIn .76s cubic-bezier(.16,1,.3,1) .16s both}
+.tfx.strong .tfx-in{font-size:clamp(40px,11vw,104px)}
+.tfx.strong .tfx-out{font-size:clamp(32px,8.5vw,76px)}
+@keyframes tfxIn{0%{opacity:0;letter-spacing:.16em;transform:translateX(5vw) skewX(-8deg)}
+  42%{opacity:1}76%{opacity:1;letter-spacing:0;transform:translateX(0) skewX(0deg)}
+  100%{opacity:0;letter-spacing:0;transform:translateX(0) skewX(0deg)}}
+@keyframes partyTitleLand{from{letter-spacing:.14em;opacity:.25;transform:translateY(8px)}
+  to{letter-spacing:-.01em;opacity:1;transform:none}}
+@keyframes fullTitleLand{from{letter-spacing:.16em;opacity:.2;transform:translateY(6px)}
+  to{letter-spacing:.8px;opacity:1;transform:none}}
+@keyframes miniIn{from{opacity:0;transform:translateY(55%)}
+  to{opacity:1;transform:none}}
+.art-in{animation:artIn .6s cubic-bezier(.16,1,.3,1) both}
+.party-artx{display:block;width:100%;height:100%;
+  animation:artIn .6s cubic-bezier(.16,1,.3,1) both}
+@keyframes artIn{from{opacity:0;transform:scale(1.07)}
+  to{opacity:1;transform:scale(1)}}
+/* ---- TrackFx v2 surfaces (Animation Wave, 2026-11-17) ----
+   The mini bar's compact wipe, the artwork flip in the bar, the full
+   player's ambient wash, the disc's blur-to-sharp crossfade with a
+   parallax settle, and the big outlined state words. Transform and
+   opacity only, except the crossfade's blur — that blur IS the
+   brief's blur-to-sharp ask, one image for ~0.7s. */
+.tfxm{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5}
+.tfxm-shade{position:absolute;top:-20%;bottom:-20%;left:0;width:140%;background:#000;
+  opacity:.5;transform:translateX(-130%) skewX(-18deg);
+  animation:tfxmShade .6s cubic-bezier(.76,0,.18,1) both}
+@keyframes tfxmShade{to{transform:translateX(120%) skewX(-18deg)}}
+.tfxm-band{position:absolute;top:-20%;bottom:-20%;left:0;width:11%;
+  background:var(--tint,var(--green));opacity:0;
+  transform:translateX(-30vw) skewX(-18deg);
+  animation:tfxmBand .55s cubic-bezier(.76,0,.18,1) .05s both}
+@keyframes tfxmBand{0%{transform:translateX(-30vw) skewX(-18deg);opacity:0}
+  15%{opacity:.9}85%{opacity:.9}
+  100%{transform:translateX(112vw) skewX(-18deg);opacity:0}}
+.mini-row{perspective:340px}
+.mini-artw{flex:0 0 auto;display:block;border-radius:50%;
+  animation:miniArtFlip .55s cubic-bezier(.16,1,.3,1) both}
+@keyframes miniArtFlip{0%{opacity:.2;transform:translateY(38%) rotateX(58deg) scale(.82)}
+  100%{opacity:1;transform:none}}
+.full-wash{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.22;
+  background:radial-gradient(130% 62% at 50% -6%,
+    color-mix(in srgb,var(--wash) 55%,transparent),transparent 68%);
+  animation:washSweep .95s cubic-bezier(.16,1,.3,1) both}
+@keyframes washSweep{0%{opacity:0;transform:translateX(-16%) scale(1.06)}
+  55%{opacity:.34}100%{opacity:.22;transform:none}}
+.art-disc{position:relative}
+.art-in2{animation:artIn2 .68s cubic-bezier(.16,1,.3,1) both}
+@keyframes artIn2{0%{opacity:.25;filter:blur(14px);transform:scale(1.13) translateX(12px)}
+  60%{opacity:1}100%{opacity:1;filter:blur(0);transform:none}}
+.artx-old{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  border-radius:50%;pointer-events:none;animation:artOut .68s ease both}
+@keyframes artOut{from{opacity:1;filter:blur(0);transform:scale(1)}
+  to{opacity:0;filter:blur(10px);transform:scale(.93) translateX(-10px)}}
+.full-state{position:absolute;top:23%;left:0;right:0;z-index:55;display:grid;
+  place-items:center;pointer-events:none;font-family:var(--font-display);
+  font-size:clamp(44px,13vw,84px);font-weight:900;letter-spacing:.05em;
+  text-transform:uppercase;color:transparent;
+  -webkit-text-stroke:2px var(--green);transform:rotate(-8deg)}
+.full-state.paused{animation:stateIn .35s cubic-bezier(.16,1,.3,1) both}
+.full-state.play{animation:statePlay .78s cubic-bezier(.16,1,.3,1) both}
+@keyframes stateIn{from{opacity:0;transform:rotate(-8deg) scale(1.18)}
+  to{opacity:1;transform:rotate(-8deg) scale(1)}}
+@keyframes statePlay{0%{opacity:0;transform:rotate(-8deg) scale(1.18)}
+  18%{opacity:1}70%{opacity:1}100%{opacity:0;transform:rotate(-8deg) scale(.96)}}
+.party-play{position:absolute;inset:0;display:grid;place-items:center;
+  pointer-events:none;font-size:52px;font-weight:900;letter-spacing:.04em;
+  text-transform:uppercase;color:transparent;
+  -webkit-text-stroke:2px var(--green);transform:rotate(-8deg);
+  animation:statePlay .78s cubic-bezier(.16,1,.3,1) both}
+/* The one quiet line at the very bottom of the Party screen. */
+.party-credit{margin-top:20px;text-align:center;font-size:11px;letter-spacing:.08em;
+  color:var(--fg3);opacity:.7}
+@keyframes rmFade{from{opacity:0}to{opacity:1}}
+
+/* ================================================================
+   DAY MODE — corrections for [data-theme="light"]
+   The token swap (core/theme.js) re-skins everything that reads
+   var(--…). What remains is the handful of places that hard-coded
+   a dark surface or a pale "on-dark" text colour: on a white page
+   those either stayed black or vanished. Each rule below exists
+   because a specific surface broke; dark themes are untouched.
+   ================================================================ */
+
+/* Native widgets: the contrast-fix block near the top forces
+   color-scheme:dark on every control — in Day mode the UA must be
+   told the truth or date/select popups render dark-on-light. */
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea,
+[data-theme="light"] button,
+[data-theme="light"] optgroup,
+[data-theme="light"] option{color-scheme:light}
+/* The picker-indicator filter was tuned to turn a dark glyph neon
+   on black; on white it washes the glyph out entirely. */
+[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator{filter:none}
+
+/* Mini player + floating trip bar carried literal rgba(14,20,18)
+   and rgba(8,11,10) backgrounds — black bars on a white app. */
+[data-theme="light"] .mini{background:color-mix(in srgb,var(--s2) 94%,transparent)}
+[data-theme="light"] .mini.mini-hidden{background:color-mix(in srgb,var(--s2) 92%,transparent)}
+[data-theme="light"] .tripbar{background:color-mix(in srgb,var(--s1) 95%,transparent);
+  box-shadow:0 14px 40px rgba(10,31,24,.20)}
+
+/* Inline notes and the warn chip used pale on-dark text (#A9EEFF,
+   #FFB3BE, #FFE2A0) over a faint tint — invisible on white. */
+[data-theme="light"] .note{color:#065A70}
+[data-theme="light"] .note.bad{color:#B3261E}
+[data-theme="light"] .note.warn{color:#8A5A00}
+[data-theme="light"] .chip.w{color:#8A5A00}
+
+/* AQI "Moderate" band colour was raw lime #a3e635 — about 1.3:1 on
+   white, effectively invisible. The band reads var(--aqi-mod,
+   #a3e635); Day defines this deep leaf value, Dark never defines
+   the var and keeps the lime exactly as before. */
+[data-theme="light"]{--aqi-mod:#3F6212}
+
+/* Trip via-stops: the "you are here" row was pale cyan #BFF7FF. */
+[data-theme="light"] .viarow.now{color:#065A70}
+[data-theme="light"] .viarow.now .vdot{background:var(--cyan);border-color:var(--cyan)}
+/* Journey-clock segments without their own colour took color:
+   var(--bg) — black text on a segment in Dark, white-on-white here. */
+[data-theme="light"] .tlseg{color:#0A1F18}
+
+/* Leaflet chrome: dark-green stage + dark attribution pill. */
+[data-theme="light"] .leaflet-container{background:#E8EFEC}
+[data-theme="light"] .leaflet-control-attribution{background:rgba(255,255,255,.85)!important;color:var(--fg3)!important}
+[data-theme="light"] .leaflet-control-attribution a{color:var(--cyan-dim)!important}
+
+/* Glass and glow lean on neon tints that read as dirt on white;
+   give glass a hair of shadow and turn the glow into a soft lift. */
+[data-theme="light"] .glass{box-shadow:0 1px 4px rgba(10,31,24,.06)}
+[data-theme="light"] .glow{box-shadow:0 2px 16px color-mix(in srgb,var(--green) 16%,transparent)}
+[data-theme="light"] .art{box-shadow:0 14px 44px rgba(10,31,24,.18)}
+
+/* Party Mode wizard cards hard-code the deck's black (#000) while
+   their title takes var(--fg) — in Day that is black on black.
+   The wizard is chrome, not stage: it goes light. The live deck
+   (.party-deck) and the track-change shade stay black by design,
+   like the vinyl disc and the TV screen. */
+[data-theme="light"] .party-card{background:var(--s1);border-color:var(--line)}
+[data-theme="light"] .party-card.on{background:color-mix(in srgb,var(--green) 8%,var(--s1))}
+
+/* ---------------- Omni AI: full-screen chat + activity feed ----------------
+   The chat owns the viewport (z over the app bars and bottom nav, under
+   toasts). Colours are theme tokens only — Dark (AMOLED) and Day both
+   resolve through the variables; nothing hard-coded. */
+.ai-full{position:fixed;inset:0;height:100dvh;z-index:100;background:var(--bg);color:var(--fg);
+  display:flex;flex-direction:column;max-width:680px;margin:0 auto;animation:up .22s cubic-bezier(.2,.9,.3,1)}
+.ai-head{display:flex;align-items:center;gap:10px;padding:calc(10px + var(--safe-t)) 12px 10px;
+  border-bottom:1px solid var(--line);background:var(--s1)}
+.ai-iconbtn{width:38px;height:38px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;
+  background:var(--s2);color:var(--fg);border:1px solid var(--line);cursor:pointer}
+.ai-ava{width:34px;height:34px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;
+  background:var(--s3);color:var(--green);border:1px solid var(--line)}
+.ai-title{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.ai-title b{font-size:16px}
+.ai-status{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg3)}
+.ai-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:0 0 auto}
+.ai-dot.busy{background:var(--warn);animation:aipulse 1s ease-in-out infinite}
+@keyframes aipulse{50%{opacity:.35}}
+.ai-body{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:12px;display:flex;flex-direction:column;gap:10px}
+.ai-nowp{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);background:var(--s1)}
+.ai-nowp img{width:34px;height:34px;border-radius:8px;object-fit:cover;flex:0 0 auto}
+.ai-nowp-main{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;background:none;border:0;color:var(--fg);cursor:pointer;text-align:left;padding:0}
+.ai-nowp-main b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.ai-nowp-main span{font-size:11.5px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.ai-composer{border-top:1px solid var(--line);background:var(--s1);padding:10px 12px calc(10px + var(--safe-b))}
+.ai-row{display:flex;gap:6px}
+.ai-hint{margin-top:8px;line-height:1.45}
+.ai-steps{align-self:flex-start;max-width:92%;background:var(--s2);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:9px 12px;display:flex;flex-direction:column;gap:6px}
+.ai-step{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--fg)}
+.ai-step.done{color:var(--fg3)}
+.ai-check{color:var(--green);display:grid;place-items:center;width:14px;flex:0 0 auto}
+.ai-spin{width:14px;height:14px;flex:0 0 auto;border-radius:50%;border:2px solid var(--line2);
+  border-top-color:var(--green);animation:airot .7s linear infinite}
+@keyframes airot{to{transform:rotate(360deg)}}
+.ai-summary{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg3);
+  background:none;border:0;padding:2px 0;cursor:pointer}
+
+/* ---------------- W29: side navigation + my main tools ----------------
+   One panel, two lives: a slide-in drawer under 1240px (hamburger in the
+   top bar, backdrop, 48px rows) and a persistent rail at 1240px and up,
+   where .app shifts right into the remaining space and stays centred in
+   it. While the drawer is open the page locks and the floating AI button
+   steps aside, so drawer, fab and bottom nav can never share a corner. */
+.sidenav{position:fixed;top:0;left:0;bottom:0;width:min(320px,86vw);z-index:130;
+  background:var(--s1);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;
+  transform:translateX(-106%);transition:transform .26s cubic-bezier(.2,.9,.3,1);
+  padding-top:var(--safe-t)}
+.sidenav.open{transform:none;box-shadow:var(--sh-3)}
+.sb-backdrop{position:fixed;inset:0;z-index:125;background:rgba(0,0,0,.55)}
+.sb-head{display:flex;align-items:center;gap:10px;padding:14px 14px 10px}
+.sb-head .brand{font-size:22px}
+.sb-count{flex:1;font-size:11.5px;color:var(--fg3);white-space:nowrap}
+.sb-search{display:flex;align-items:center;gap:8px;margin:2px 12px 8px;
+  background:var(--s2);border:1px solid var(--line);border-radius:12px;
+  padding:0 10px;color:var(--fg3)}
+.sb-search input{flex:1;min-width:0;background:none;border:0;outline:none;
+  color:var(--fg);font:inherit;font-size:14px;height:42px}
+.sb-clear{background:none;border:0;color:var(--fg3);display:grid;place-items:center;
+  width:30px;height:30px;cursor:pointer;flex:0 0 auto}
+.sb-scroll{flex:1;overflow-y:auto;padding:2px 8px calc(14px + var(--safe-b))}
+.sb-sec{display:flex;align-items:center;gap:8px;width:100%;padding:14px 10px 4px;
+  font-size:11px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;
+  color:var(--fg3);background:none;border:0;text-align:left;font-family:inherit}
+.sb-secbtn{cursor:pointer}
+.sb-item{display:flex;align-items:center;gap:11px;width:100%;min-height:48px;
+  padding:8px 10px;background:none;border:0;border-radius:12px;color:var(--fg);
+  font:inherit;font-size:14.5px;text-align:left;cursor:pointer}
+.sb-item>span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-item:active{background:var(--s2)}
+.sb-item.on{background:var(--s2);color:var(--green);font-weight:600;
+  box-shadow:inset 3px 0 0 var(--green)}
+.sb-sec{min-height:40px}
+.sb-sec.inview{color:var(--green)}
+.sb-item .live{width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 5px var(--green);flex:0 0 auto}
+.sb-item .off{font-size:9.5px;color:var(--cyan);flex:0 0 auto}
+.sb-n{font-size:11px;color:var(--fg3);background:var(--s2);border:1px solid var(--line);
+  border-radius:99px;padding:1px 7px;flex:0 0 auto;min-width:26px;text-align:center}
+body.sb-open{overflow:hidden}
+body.sb-open .aifab{display:none}
+@media (min-width:1240px){
+  .sidenav{transform:none;width:264px}
+  .sb-backdrop{display:none}
+  .iconbtn.sb-close{display:none}
+  .iconbtn.sb-burger{display:none}
+  .app{margin-left:calc(264px + (100vw - 928px)/2);margin-right:auto}
+  /* W31 Phase 4 (gate fix, home-1280): the ≥1025 .nav is a vertical
+     rail at left:0 — at ≥1240 it must start AFTER the 264px sidenav
+     rail, not underneath it. The mini-player shifts with it; the FAB
+     (right-docked), toasts (viewport-centred) and scroll-top (right)
+     are unaffected, so the §6.1 bottom stack stays consistent. */
+  .nav{left:264px}
+  .mini{left:360px}
+}
+/* My Main Tools — edit-mode chips (normal mode reuses the home tiles) */
+.mt-editrow{display:flex;flex-wrap:wrap;gap:8px}
+.mt-chip{display:inline-flex;align-items:center;gap:6px;min-height:38px;
+  padding:6px 8px 6px 12px;background:var(--s2);border:1px solid var(--line);
+  border-radius:99px;color:var(--fg);font-size:13px}
+.mt-chip>button{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;
+  background:var(--s3);border:0;color:var(--fg2);cursor:pointer;flex:0 0 auto}
+.mt-chip.add{cursor:pointer;padding:6px 12px;font:inherit}
+.mt-add{max-height:264px;overflow-y:auto;padding:2px}
+
+/* ================= W31 Phase 1 — tokens + shell =================
+   Layer A §4/§5/§6.1/§6.2/§6.4 + Layer B items 2.1, 2.5, 2.14, 3.4.
+   Everything below is additive: no existing class is renamed or
+   removed, and every value derives from the tokens in :root. */
+
+/* ---- §4.1 type ramp (item 3.4: optical sizing + tracking) ---- */
+.t-hero{font-family:var(--font-display);font-size:40px;font-weight:700;line-height:1.02;letter-spacing:-.03em;font-optical-sizing:auto}
+.t-display{font-family:var(--font-display);font-size:30px;font-weight:600;line-height:1.08;letter-spacing:-.025em;font-optical-sizing:auto}
+.t-title{font-size:22px;font-weight:600;line-height:1.15;letter-spacing:-.02em;font-optical-sizing:auto}
+.t-tooltitle{font-size:17px;font-weight:600;line-height:1.2;letter-spacing:-.01em}
+.t-body{font-size:15px;font-weight:400;line-height:1.55}
+.t-body-sm{font-size:13.5px;font-weight:400;line-height:1.5}
+.t-label{font-size:12px;font-weight:600;line-height:1.3;letter-spacing:.04em}
+.t-caption{font-size:11.5px;font-weight:500;line-height:1.35;letter-spacing:.01em;color:var(--fg3)}
+.t-num{font-family:var(--font-mono);font-weight:500;font-variant-numeric:tabular-nums}
+@media (min-width:720px){ :root{--pad-screen:24px} }
+@media (min-width:1240px){ :root{--pad-screen:32px} }
+
+/* ---- Day mode shadow colour (§4.4: fg-derived, not black) ---- */
+[data-theme="light"]{
+  --sh-col:color-mix(in srgb,var(--fg) 16%,transparent);
+  --sh-col-soft:color-mix(in srgb,var(--fg) 9%,transparent);
+}
+
+/* ---- item 2.1: refraction-edge glass — chrome ONLY ----
+   Gradient border (fg 14%→2%, via border-image on a transparent
+   border so border-radius keeps working through background-clip),
+   the §4.4 specular top line, and a faint bottom inner shadow.
+   Content cards (.card, .tile, .err) get none of this. */
+/* Straight chrome (no radius to preserve): true gradient border. */
+.topbar,.nav,.sidenav,.mini{
+  border:1px solid transparent;
+  border-image:linear-gradient(180deg,color-mix(in srgb,var(--fg) 14%,transparent),color-mix(in srgb,var(--fg) 2%,transparent)) 1;
+  box-shadow:var(--edge-hi),inset 0 -1px 0 color-mix(in srgb,var(--fg) 3%,transparent);
+}
+/* Rounded chrome: gradient border via background-clip, so the
+   radius survives — surface painted padding-box, edge border-box. */
+.glass,.sheet,.aifab-menu,.tb-sheet,.toasts .toast{
+  border:1px solid transparent;
+  box-shadow:var(--edge-hi),inset 0 -1px 0 color-mix(in srgb,var(--fg) 3%,transparent);
+}
+.glass,.tb-sheet{background:linear-gradient(var(--glass-bg),var(--glass-bg)) padding-box,var(--glass-edge) border-box}
+.sheet{background:linear-gradient(var(--s1),var(--s1)) padding-box,var(--glass-edge) border-box}
+.aifab-menu{background:linear-gradient(var(--s2),var(--s2)) padding-box,var(--glass-edge) border-box}
+.toasts .toast{background:linear-gradient(var(--s3),var(--s3)) padding-box,var(--glass-edge) border-box}
+/* Floating glass keeps its ladder shadow on top of the edge light */
+.sheet,.aifab-menu,.tb-sheet{box-shadow:var(--sh-3),var(--edge-hi)}
+.toasts .toast{box-shadow:var(--sh-3),var(--edge-hi)}
+.sidenav.open{box-shadow:var(--sh-3),var(--edge-hi)}
+
+/* ---- item 2.14: sticky-bar scroll shadow ----
+   Hairline at rest; --sh-1 fades in (opacity-only transition on a
+   pseudo-element) once the shell marks the bar .scrolled. Reusable
+   on any sticky bar via .sticky-shadow. */
+.sticky-shadow{position:relative}
+.sticky-shadow::after,.topbar::after{
+  content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  box-shadow:var(--sh-1);opacity:0;transition:opacity var(--d-2) var(--ease-out);
+  pointer-events:none;
+}
+.sticky-shadow.scrolled::after,.topbar.scrolled::after{opacity:1}
+.topbar.scrolled{box-shadow:none}
+
+/* ---- §6.4 status component ---- */
+.statusdot{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto}
+.statusdot-dot{width:7px;height:7px;border-radius:50%;background:var(--fg3);flex:0 0 auto}
+.statusdot.live .statusdot-dot{background:var(--green);box-shadow:0 0 5px var(--green)}
+.statusdot.stale .statusdot-dot{background:var(--warn)}
+.statusdot .t-caption{color:var(--fg3)}
+.tile .statusdot{position:absolute;top:6px;right:7px}
+.tile .statusdot .t-caption{font-size:10.5px}
+.sb-item .statusdot{margin-left:auto}
+
+/* ---- §6.2 tool frame ---- */
+.toolframe{padding:var(--sp-4) var(--pad-screen) 0}
+.toolframe-h{display:flex;align-items:center;gap:var(--sp-3)}
+.toolframe-tile{width:40px;height:40px;flex:0 0 auto;display:grid;place-items:center;
+  border-radius:var(--r-sm);color:var(--ca,var(--green));
+  background:color-mix(in srgb,var(--ca,var(--green)) 12%,transparent)}
+.toolframe-tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.toolframe-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toolframe-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toolframe-bar{display:flex;align-items:center;gap:var(--sp-2);margin-top:var(--sp-3);flex-wrap:wrap}
+
+/* ---- §6.1 topbar manifest + overflow sheet ---- */
+.tb-overflow{display:none}
+.tb-dots{font-size:20px;line-height:1}
+.tb-sheet{position:absolute;top:calc(100% + 6px);right:10px;z-index:80;min-width:210px;
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border-radius:var(--r-lg);padding:6px;display:flex;flex-direction:column;gap:2px}
+.tb-sheet button{display:flex;align-items:center;gap:10px;background:none;border:0;color:var(--fg);
+  font:inherit;font-size:14px;text-align:left;padding:11px 12px;border-radius:var(--r-sm);cursor:pointer;min-height:44px}
+.tb-sheet button:active{background:var(--s2)}
+.tb-sheet-bg{position:fixed;inset:0;z-index:79;background:transparent}
+@media (max-width:480px){
+  /* home: burger · brand mark only · sound · settings · presence */
+  .brand-word{display:none}
+  /* tool: burger · back · title · pin · overflow */
+  .topbar.has-tool .tb-wide{display:none}
+  .topbar.has-tool .tb-overflow{display:grid}
+}
+/* ≥1240px with the rail visible: the topbar drops its brand block */
+@media (min-width:1240px){
+  .topbar .brand{display:none}
+  /* §6.1 (D10): the content column uses the stage —
+     min(1060px, 100vw − rail − 48px); rail is 264px here (§6.4). */
+  .app{max-width:min(1060px,calc(100vw - 264px - 48px));
+    margin-left:calc(264px + (100vw - 264px - min(1060px,100vw - 264px - 48px))/2)}
+}
+
+/* ---- §4.5 aurora backdrop (home hero + full player only) ---- */
+.aurora{position:relative}
+.aurora::before{content:"";position:absolute;inset:0 0 auto;height:420px;pointer-events:none;
+  background:
+    radial-gradient(60% 40% at 18% 0%,color-mix(in srgb,var(--green) 13%,transparent),transparent 70%),
+    radial-gradient(50% 36% at 88% 8%,color-mix(in srgb,var(--cyan) 11%,transparent),transparent 70%);
+  -webkit-mask-image:linear-gradient(180deg,#000 0%,transparent 420px);
+  mask-image:linear-gradient(180deg,#000 0%,transparent 420px)}
+@media (prefers-reduced-motion: no-preference){
+  .aurora::before{animation:aurora-drift 24s ease-in-out infinite alternate}
+}
+@keyframes aurora-drift{from{transform:translateX(0)}to{transform:translateX(2.5%)}}
+
+/* ---- §6.1 bottom stack: FAB fades while scrolling ---- */
+.aifab{transition:opacity var(--d-2) var(--ease-out)}
+.aifab.scrolling{opacity:.55}
+
+/* W31 coordinator fix (Phase 1 gate): title-zone de-duplication at ≤480px.
+   Home: the hero carries the brand — the topbar title block hides.
+   Tool: the ToolFrame owns title+subtitle — the topbar shows title only. */
+@media (max-width: 480px) {
+  .topbar.tb-home .tb-t { display: none; }
+  .topbar.has-tool .tb-t span { display: none; }
+}
+
+/* ================= W31 Phase 2 — shared components + motion + feel =========
+   Layer A §6.5–6.8, §6.10–6.11 + items 2.12, 2.14-shared, 2.15, 3.1-chrome,
+   3.8-shared, 7.9-shared. Everything derives from the Phase-1 tokens;
+   animation is transform/opacity only (backdrop blur on sheet glass only).
+   This block is intentionally last: its rules win over the legacy rules
+   above at equal specificity, so no legacy rule had to be rewritten. */
+
+/* ---- theme-switch cross-fade, extended (§5.2): colours + shadow +
+   border via the token layer. Pressable surfaces re-declare their own
+   transition below, so press timing is never slowed by this. ---- */
+:root{--theme-transition:background-color .3s ease,color .3s ease,border-color .3s ease,box-shadow .3s ease}
+.card,.list,.out,.stat,.tile,.fld input,.fld select,.fld textarea,.search,.chip,.cat,.sheet,.err,.sec-h{
+  transition-property:background-color,color,border-color,box-shadow,transform,opacity;
+}
+
+/* ---- 7.9: focus-visible ring, drawn in over 120ms ---- */
+@keyframes focusring{from{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 0%,transparent)}
+  to{box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 35%,transparent)}}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:6px;
+  animation:focusring var(--d-1) var(--ease-out)}
+
+/* ---- skip-to-content (7.12) ---- */
+.skip-link{position:fixed;top:calc(8px + var(--safe-t));left:8px;z-index:400;
+  background:var(--s2);color:var(--fg);border:1px solid var(--hairline);border-radius:var(--r-sm);
+  padding:10px 14px;font-size:13.5px;font-weight:600;text-decoration:none;box-shadow:var(--sh-3);
+  transform:translateY(-64px);opacity:0;pointer-events:none;
+  transition:transform var(--d-2) var(--ease-out),opacity var(--d-2) var(--ease-out)}
+.skip-link:focus-visible{transform:none;opacity:1;pointer-events:auto}
+
+/* ---- §5.2/2.15 press language, unified: scale .97 (icons .94), 4%
+   brightness dip, --d-1 --ease-out in, spring release 160ms; pressed
+   depth = shadow collapses one ladder step + edge highlight dims. ---- */
+.btn,.cat,.chip,.tab,.cont-card,.tile,.shelf-chip,.catcard{
+  transition:transform 160ms var(--ease-spring),box-shadow var(--d-1) var(--ease-out),
+  background-color .3s ease,color .3s ease,border-color .3s ease,opacity var(--d-1) var(--ease-out)}
+.btn:active,.cat:active,.chip:active,.tab:active,.cont-card:active,.tile:active,.shelf-chip:active,.catcard:active{
+  transition:transform var(--d-1) var(--ease-out),box-shadow var(--d-1) var(--ease-out);
+  box-shadow:var(--sh-0);filter:brightness(.96)}
+.btn:active,.cat:active,.chip:active,.tab:active{transform:scale(.97)}
+.cont-card:active{transform:scale(.99)}
+.tile:active,.catcard:active{transform:scale(.97)}
+.iconbtn,.rowbtn,.cbtn,.mini-btn,.nav button,.qchip-x,.scrolltop,.pressable{
+  transition:transform 160ms var(--ease-spring),box-shadow var(--d-1) var(--ease-out),
+  background-color .3s ease,color .3s ease,border-color .3s ease,opacity var(--d-1) var(--ease-out)}
+.iconbtn:active,.rowbtn:active,.cbtn:active,.mini-btn:active,.nav button:active,.qchip-x:active,.scrolltop:active,.pressable:active{
+  transition:transform var(--d-1) var(--ease-out),box-shadow var(--d-1) var(--ease-out);
+  transform:scale(.94);box-shadow:var(--sh-0);filter:brightness(.96)}
+.pressable.lp-ring{box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 45%,transparent)}
+
+/* ---- §6.6 buttons ---- */
+.btn{min-height:48px;padding:10px 18px;border-radius:var(--r-sm);font-size:15px;font-weight:600;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  box-shadow:var(--sh-1),var(--edge-hi)}
+.btn.ghost{box-shadow:var(--sh-0)}
+.btn.danger{background-color:var(--bad);color:#fff;
+  background-image:linear-gradient(180deg,color-mix(in srgb,var(--bad) 82%,#fff),var(--bad))}
+.btn.sm{min-height:38px;height:38px;padding:6px 12px;font-size:13.5px}
+.btn:disabled{opacity:.4;pointer-events:none}
+.btn .spin{width:16px;height:16px;border-width:2px}
+.iconbtn{width:44px;height:44px;border-radius:var(--r-sm);box-shadow:var(--sh-0)}
+
+/* ---- §6.6 inputs + 2.12 focus bloom ---- */
+.fld{gap:6px}
+.fld label{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--fg2);text-transform:none}
+.fld input,.fld select{height:48px;padding:0 12px;border-radius:var(--r-sm);border-color:var(--hairline)}
+.fld textarea{border-radius:var(--r-sm);border-color:var(--hairline)}
+.search{border-radius:var(--r-sm);border-color:var(--hairline);min-height:48px}
+.fld input:focus,.fld select:focus,.fld textarea:focus,.search:focus-within{
+  border-color:var(--green);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 22%,transparent),
+             0 0 10px color-mix(in srgb,var(--green) 12%,transparent)}
+.fld.err input,.fld.err select,.fld.err textarea{border-color:var(--bad)}
+.fld.err input:focus,.fld.err select:focus,.fld.err textarea:focus{
+  border-color:var(--bad);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 22%,transparent),
+             0 0 10px color-mix(in srgb,var(--bad) 12%,transparent)}
+.fld-err{display:flex;align-items:center;gap:5px;color:var(--bad)}
+.fld-err .t-caption{color:var(--bad)}
+
+/* ---- §6.7 chips: two species ---- */
+.chiprow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chiprow.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chiprow.scroll::-webkit-scrollbar{display:none}
+.chip.filter,.cat{height:40px;min-height:40px;border-radius:var(--r-sm);padding:0 14px;
+  display:inline-flex;align-items:center;gap:6px;background:var(--s2);
+  border:1px solid var(--hairline);color:var(--fg2);font-size:13.5px;font-weight:500;cursor:pointer}
+.chip.filter.on,.cat.on{background-color:var(--green);background-image:var(--grad);
+  color:#00110A;border-color:transparent;font-weight:600}
+.chip.sugg{height:40px;border-radius:var(--r-pill);padding:0 13px;display:inline-flex;
+  align-items:center;gap:6px;background:transparent;color:var(--fg2);cursor:pointer;
+  border:1px dashed color-mix(in srgb,var(--fg) 28%,transparent);
+  font-size:13.5px;font-weight:500}
+.chip.sugg.on{background-color:var(--green);background-image:var(--grad);color:#00110A;
+  border:1px solid transparent;font-weight:600}
+.chip.sugg svg{color:var(--fg3)}
+.chip.sugg.on svg{color:#00110A}
+
+/* ---- §6.5 cards ---- */
+.card{padding:var(--sp-4);border-color:var(--hairline);box-shadow:var(--sh-1),var(--edge-hi)}
+.card .card{background:var(--s2);border-radius:var(--r-sm);box-shadow:var(--sh-0)}
+@media(hover:hover) and (pointer:fine){
+  .cont-card:hover,.tile:hover{transform:translateY(-2px);box-shadow:var(--sh-2),var(--edge-hi)}
+}
+.poster-card{padding:0;overflow:hidden}
+.poster-art{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--s2);
+  border-radius:var(--r) var(--r) 0 0}
+.poster-artwrap{position:relative}
+.poster-meta{padding:var(--sp-3);display:flex;flex-direction:column;gap:2px}
+.poster-score{position:absolute;left:var(--sp-2);bottom:var(--sp-2);z-index:2;
+  background:color-mix(in srgb,var(--s1) 88%,transparent);border:1px solid var(--hairline);
+  border-radius:var(--r-xs);padding:2px 7px}
+
+/* ---- 3.8 shared: every shared counter is tabular ---- */
+.stat .v{font-family:var(--font-mono);font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat .l{font-size:12px;text-transform:none;letter-spacing:.04em;color:var(--fg3)}
+.stat .s{font-size:11.5px}
+.src-meta,.poster-score,.toast{font-variant-numeric:tabular-nums}
+
+/* ---- §6.8 toasts: above the bottom stack (tab bar + mini-player + 12px),
+   glass + --sh-3, kind icon, rise/fade --d-2 out / fade --d-1 exit ---- */
+.toasts{bottom:calc(72px + var(--mini-lift,0px) + var(--safe-b))}
+.toast{display:flex;align-items:center;gap:8px;border-radius:var(--r);
+  padding:10px 14px;font-size:13.5px;pointer-events:auto;
+  animation:toastin var(--d-2) var(--ease-out)}
+.toast.out{opacity:0;transform:translateY(4px);transition:opacity var(--d-1) var(--ease-out),transform var(--d-1) var(--ease-out)}
+.toast-ic{display:grid;place-items:center;flex:0 0 auto;color:var(--green)}
+.toast.err .toast-ic{color:var(--bad)}
+.toast.info .toast-ic{color:var(--cyan)}
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ---- tab-bar sliding indicator (§5.2): --d-2 spring, transform only ---- */
+.nav-ind{position:absolute;left:0;bottom:calc(3px + var(--safe-b));width:20%;z-index:2;
+  display:grid;place-items:center;pointer-events:none;
+  transition:transform var(--d-2) var(--ease-spring)}
+.nav-ind i{width:26px;height:3px;border-radius:99px;background:var(--green);display:block}
+@media(min-width:1025px){.nav-ind{display:none}}
+.apptabs .nav-ind{bottom:3px}
+
+/* ---- 4.5 segmented control (Settings Dark/Day): sliding indicator ---- */
+.tabs.seg2{position:relative}
+.tabs.seg2 .tab{position:relative;z-index:1;background:none}
+.tabs.seg2 .tab.on{background:none;background-image:none;color:#00110A}
+.tabs.seg2 .tab.on .ico{color:#00110A}
+.seg2-ind{position:absolute;top:5px;bottom:5px;left:5px;z-index:0;
+  width:calc((100% - 16px)/2);border-radius:10px;background-color:var(--green);
+  background-image:var(--grad);
+  transition:transform var(--d-2) var(--ease-spring)}
+.seg2-ind.day{transform:translateX(calc(100% + 6px))}
+
+/* ---- switch thumbs ride the spatial spring (4.5) ---- */
+.switch .thumb,.switch .knob,.tgl .thumb{transition:transform var(--d-2) var(--ease-spring)}
+
+/* ---- §6.11 ONE sheet system: --r-xl top corners, 36×4 handle, glass
+   header, --sh-3, drag-dismiss (kit useSheetDrag), backdrop blur 2→6px ---- */
+.sheet{border-radius:var(--r-xl) var(--r-xl) 0 0;padding:10px 16px calc(16px + var(--safe-b));
+  box-shadow:var(--sh-3),var(--edge-hi);
+  animation:up var(--d-3) var(--ease-move)}
+.sheet.dragging{animation:none;transition:none}
+.sheet-handle{width:36px;height:4px;border-radius:99px;flex:0 0 auto;
+  background:color-mix(in srgb,var(--fg3) 55%,transparent);margin:2px auto 12px}
+.sheet-bg{animation:sheetbg var(--d-3) var(--ease-out)}
+@keyframes sheetbg{from{backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  to{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}}
+.sheet-bg{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.sheet-head{position:sticky;top:-10px;z-index:3;margin:-10px -16px 10px;padding:12px 16px 8px;
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  border-radius:var(--r-xl) var(--r-xl) 0 0}
+.tb-sheet{border-radius:var(--r-lg);box-shadow:var(--sh-3),var(--edge-hi)}
+
+/* ---- 2.14 shared adoption: sticky filter rows + sheet/section headers
+   carry the .sticky-shadow treatment; .scrolled (shell-set) fades the
+   --sh-1 layer in, exactly like the topbar. ---- */
+.sec-h.sticky{box-shadow:none}
+.sec-h.sticky.sticky-shadow::after{bottom:0}
+.chiprow.sticky,.toolframe-bar.sticky{position:sticky;top:calc(57px + var(--safe-t));z-index:6;
+  background:var(--bg);padding-top:6px;padding-bottom:6px}
+
+/* ---- §6.10 states ---- */
+.skel{animation:skel 1.2s linear infinite;background-color:var(--s2);
+  background-image:linear-gradient(100deg,transparent 40%,color-mix(in srgb,var(--fg) 6%,transparent) 50%,transparent 60%);
+  background-size:200% 100%}
+.skel-line{height:12px;border-radius:6px}
+.skel-card{border-radius:var(--r);padding:var(--sp-4);background:var(--s1);border:1px solid var(--hairline)}
+.skel-poster{aspect-ratio:2/3;border-radius:var(--r)}
+.skel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:10px}
+.skel-pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+.state .state-ic{width:44px;height:44px;border-radius:50%;
+  background:color-mix(in srgb,var(--green) 12%,transparent);color:var(--green);
+  display:grid;place-items:center}
+.state .state-h{color:var(--fg)}
+.state .state-sub{max-width:34ch}
+
+/* ---- §5.3 reduced motion: THE single block (replaces the 15 scattered
+   blocks removed in this phase) + the in-app data-motion mirror.
+   The §5.3 core is verbatim; the extra lines preserve non-animation
+   semantics the scattered blocks carried (TrackFx off, tile-flight
+   hidden, equaliser bars at rest height) that the core alone drops. ---- */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{ animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important; scroll-behavior:auto !important; }
+  .skel{ animation:none } .pres-dot::after{ animation:none }
+  .tfx,.tfxm,.flywrap{ display:none }
+  .qbars i{ height:60% }
+  .tile:active,.cont-card:active,.catcard:active{ transform:none }
+}
+html[data-motion="reduced"] *,html[data-motion="reduced"] *::before,html[data-motion="reduced"] *::after{
+  animation-duration:.01ms !important; animation-iteration-count:1 !important;
+  transition-duration:.01ms !important; scroll-behavior:auto !important; }
+html[data-motion="reduced"] .skel{ animation:none }
+html[data-motion="reduced"] .pres-dot::after{ animation:none }
+html[data-motion="reduced"] .tfx,html[data-motion="reduced"] .tfxm,html[data-motion="reduced"] .flywrap{ display:none }
+html[data-motion="reduced"] .qbars i{ height:60% }
+html[data-motion="reduced"] .tile:active,html[data-motion="reduced"] .cont-card:active,html[data-motion="reduced"] .catcard:active{ transform:none }
+
+:root{--bloom:0 0 24px color-mix(in srgb,var(--green) 28%,transparent);--bloom-dot:0 0 10px color-mix(in srgb,var(--green) 35%,transparent)}.meshbg{display:block;position:absolute;inset:0;overflow:hidden;pointer-events:none;opacity:var(--mi,1);-webkit-mask-image:linear-gradient(180deg,#000 55%,transparent 98%);mask-image:linear-gradient(180deg,#000 55%,transparent 98%)}.meshbg i{position:absolute;border-radius:50%;filter:blur(40px)}.meshbg .mb-1{width:55%;height:62%;left:-8%;top:-18%;background:color-mix(in srgb,var(--m1,var(--green)) 15%,transparent)}.meshbg .mb-2{width:48%;height:55%;right:-6%;top:-12%;background:color-mix(in srgb,var(--m2,var(--cyan)) 13%,transparent)}.meshbg .mb-3{width:40%;height:48%;left:34%;top:6%;background:color-mix(in srgb,var(--m3,var(--green)) 10%,transparent);transition:background var(--d-2) var(--ease-out),opacity var(--d-2) var(--ease-out)}.meshbg::after{content:"";position:absolute;inset:0;mix-blend-mode:overlay;opacity:.035;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E")}.meshbg.nograin::after{display:none}[data-theme="light"] .meshbg::after{opacity:.02}@media (prefers-reduced-motion:no-preference){html:not([data-motion="reduced"]) .meshbg.live .mb-1{animation:mb-drift1 24s ease-in-out infinite alternate}html:not([data-motion="reduced"]) .meshbg.live .mb-2{animation:mb-drift1 24s ease-in-out infinite alternate-reverse}}@keyframes mb-drift1{from{transform:translate(0,0) scale(1);opacity:.85}to{transform:translate(14px,10px) scale(1.04);opacity:1}}html.doc-hidden .meshbg i{animation-play-state:paused}.hero{position:relative}.hero>*{position:relative}.hero h1.t-hero,.brand.gradtext{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}@media (prefers-reduced-motion:no-preference){html:not([data-motion="reduced"]) .hero h1.t-hero .kw{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;background-size:220% 100%;animation:kw-shift 6s ease-in-out infinite alternate}}@keyframes kw-shift{from{background-position:0% 50%}to{background-position:100% 50%}}.hero .btn{box-shadow:var(--bloom)}.gradnum{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-family:var(--font-mono,monospace);font-variant-numeric:tabular-nums}.status-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;background:var(--s1);border:1px solid var(--hairline);border-radius:var(--r);box-shadow:var(--sh-1);padding:9px 12px}.status-strip .ss-item{display:inline-flex;align-items:center;gap:6px;color:var(--fg2)}.status-strip .dot{box-shadow:var(--bloom-dot)}.status-strip .streak{display:inline-flex;gap:3px;align-items:center;background:none;border:0;cursor:pointer;padding:4px 2px}.status-strip .streak i{width:7px;height:7px;border-radius:50%;background:var(--s3);display:block}.status-strip .streak i.on{background:var(--green)}.countup{display:inline-block}.countup.xf{opacity:.2;transition:opacity .12s var(--ease-out)}@media (prefers-reduced-motion:no-preference){html:not([data-motion="reduced"]) .reveal{opacity:0;transform:translateY(40px)}html:not([data-motion="reduced"]) .reveal.on{opacity:1;transform:none;transition:opacity var(--d-3) var(--ease-out),transform var(--d-3) var(--ease-out)}}.skelresolve-in{animation:skelin var(--d-2) var(--ease-out) both}@keyframes skelin{from{opacity:0}to{opacity:1}}.skelresolve-stack{position:relative}.skelresolve-out{position:absolute;inset:0;animation:skelout .24s var(--ease-out) both;pointer-events:none}@keyframes skelout{to{opacity:0}}.firstrun{display:grid;gap:10px;margin-top:14px}@media(min-width:720px){.firstrun{grid-template-columns:repeat(3,1fr)}}.fr-card{display:flex;gap:10px;align-items:flex-start;text-align:left;background:var(--s1);border:1px solid var(--hairline);border-radius:var(--r);box-shadow:var(--sh-1);padding:12px;cursor:pointer;color:var(--fg);width:100%}.fr-card.used{opacity:.55}.welcome-ov{position:fixed;inset:0;z-index:400;display:grid;place-items:end center;background:color-mix(in srgb,var(--bg) 72%,transparent);backdrop-filter:blur(6px)}@media(min-width:720px){.welcome-ov{place-items:center}}.welcome-card{position:relative;overflow:hidden;width:min(520px,94vw);margin:12px;background:var(--s1);border:1px solid var(--glass-border);border-radius:var(--r-xl);box-shadow:var(--sh-3);padding:22px 18px 16px}.welcome-dots{display:flex;gap:6px;justify-content:center;margin-top:14px}.welcome-dots i{width:7px;height:7px;border-radius:50%;background:var(--s3)}.welcome-dots i.on{background:var(--green)}.install-banner{display:flex;align-items:center;gap:12px;margin-top:18px;padding:14px}.sb-foot{padding:10px 12px;border-top:1px solid var(--hairline)}.sb-foot .install-banner{margin-top:0;padding:10px}.layout-edit{margin-top:14px;padding:12px}.layout-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--hairline)}.layout-row .lr-name{flex:1;min-width:0}.promoted-head{position:relative;overflow:hidden;padding:10px 12px;margin-bottom:10px}.promoted-head .meshbg{-webkit-mask-image:none;mask-image:none}@media (prefers-reduced-motion:no-preference){html:not([data-motion="reduced"]) .catmesh-drift i{animation:catdrift 18s ease-in-out infinite alternate}}@keyframes catdrift{from{transform:translate(0,0)}to{transform:translate(7px,5px)}}[data-theme="light"] .meshbg{opacity:calc(var(--mi,1)*.55)}.catcard{overflow:hidden}.catcard .meshbg{-webkit-mask-image:none;mask-image:none}.catface{font-family:var(--catface,var(--font-display))}.outline-wrap{position:relative;overflow:hidden}.outline-num{position:absolute;right:2px;top:-14px;z-index:0;pointer-events:none;font-family:var(--font-display);font-weight:700;font-size:120px;line-height:1;color:transparent;-webkit-text-stroke:1px color-mix(in srgb,var(--fg) 14%,transparent)}.outline-wrap>*{position:relative;z-index:1}@keyframes aifabpulse{0%{box-shadow:var(--sh-3),var(--bloom),0 0 0 0 color-mix(in srgb,var(--green) 50%,transparent)}70%{box-shadow:var(--sh-3),var(--bloom),0 0 0 16px transparent}100%{box-shadow:var(--sh-3),var(--bloom),0 0 0 0 transparent}}.tile .ic{background:color-mix(in srgb,var(--ca,var(--green)) 12%,transparent);color:var(--ca,var(--green))}.cont-ic{background:color-mix(in srgb,var(--ca,var(--green)) 12%,transparent);color:var(--ca,var(--green))}
+
+/* ================= W31 Phase 4 — navigation + command palette =================
+   §6.4 rail/drawer finish · §6.9 palette (glass from Phase 1 closes the
+   2.1 palette clause) · 1.8 stagger · 1.15 hold ring · 1.22 hairline +
+   edge masks · 7.10 shortcuts card · 7.17 not-found. Tokens only. */
+.pal-wrap{position:fixed;inset:0;z-index:500;display:grid;place-items:start center;padding:10vh 0 0}
+.pal-bg{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 55%,transparent);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.pal{position:relative;width:min(640px,94vw);max-height:76dvh;display:flex;flex-direction:column;border-radius:var(--r-xl);box-shadow:var(--sh-3);overflow:hidden}
+@media (prefers-reduced-motion:no-preference){html:not([data-motion="reduced"]) .pal{animation:pal-in var(--d-2) var(--ease-spring) both}html:not([data-motion="reduced"]) .pal-bg{animation:pal-fade var(--d-2) var(--ease-out) both}}
+@keyframes pal-in{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+@keyframes pal-fade{from{opacity:0}to{opacity:1}}
+@media (max-width:640px){.pal-wrap{place-items:stretch;padding:0}.pal{width:100%;max-height:none;height:100dvh;border-radius:0}}
+.pal-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--hairline);color:var(--fg3)}
+.pal-head input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--fg);font:inherit;font-size:16px;height:40px}
+.pal-x{display:grid;place-items:center;width:36px;height:36px;flex:0 0 auto;background:var(--s2);border:1px solid var(--hairline);border-radius:var(--r-sm);color:var(--fg2);cursor:pointer}
+.pal-kbd{font-family:var(--font-mono);font-size:10.5px;color:var(--fg3);background:var(--s2);border:1px solid var(--hairline);border-radius:6px;padding:2px 6px;white-space:nowrap}
+.pal-list{overflow-y:auto;padding:6px;mask-image:linear-gradient(180deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%)}
+.pal-group{padding:10px 10px 4px;color:var(--fg3)}
+.pal-row{display:flex;align-items:center;gap:11px;width:100%;min-height:52px;padding:7px 10px;background:none;border:0;border-radius:var(--r-sm);color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+.pal-row.sel{background:var(--s2);box-shadow:inset 3px 0 0 var(--green)}
+.pal-tile{width:32px;height:32px;flex:0 0 auto;display:grid;place-items:center;border-radius:9px;color:var(--ca,var(--green));background:color-mix(in srgb,var(--ca,var(--green)) 12%,transparent)}
+.pal-tile.act{--ca:var(--cyan)}
+.pal-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal-cat{flex:0 0 auto}
+.pal-badge{flex:0 0 auto;color:var(--cyan)}
+.pal-jump{flex:0 0 auto}
+.shortcuts-list{padding:8px 14px 14px;display:grid;gap:4px}
+.shortcuts-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--hairline)}
+.shortcuts-row:last-child{border-bottom:0}
+.notfound{padding:26px var(--pad-screen)}
+.scrollprog{position:absolute;left:0;bottom:0;height:2px;width:100%;transform-origin:0 50%;background:var(--grad);pointer-events:none}
+.sb-scroll{mask-image:linear-gradient(180deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%)}
+.stag-item{display:block}
+@media (prefers-reduced-motion:no-preference){html:not([data-motion="reduced"]) .stag-item{animation:stag-in var(--d-2) var(--ease-out) both}}
+@keyframes stag-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@property --lp{syntax:'<angle>';initial-value:0deg;inherits:false}
+.pressable{position:relative}
+.pressable:active::after,.aifab.lp-hold::after{content:'';position:absolute;inset:0;border-radius:inherit;padding:2.5px;background:conic-gradient(var(--green) var(--lp),color-mix(in srgb,var(--fg) 14%,transparent) var(--lp));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none;animation:lp-fill .35s linear forwards}
+.aifab.lp-hold::after{animation-duration:.55s}
+@keyframes lp-fill{to{--lp:360deg}}
+@media (max-width:640px){body.pal-open .app{visibility:hidden}body.pal-open .pal-wrap{visibility:visible}}
+@media (min-width:720px){.firstrun{grid-template-columns:repeat(3,minmax(0,1fr))}.fr-card{min-width:0}}
+
+/* W31-P5a — Phase 5 media batch (PlayerUI + Music/Anime/TV/Movies only).
+   All motion transform/opacity only; the global reduced-motion block
+   above neutralises every animation here. No new hues: every colour
+   derives from theme tokens or the artwork tint var --w31tint, which
+   JS sets from the playing artwork (fallback = category accent). */
+/* 1.3 poster->player morph clone */
+.w31-morph{position:fixed;z-index:300;pointer-events:none;object-fit:cover;border-radius:12px;
+  transition:transform var(--d-3) var(--ease-out),opacity var(--d-3) var(--ease-out);will-change:transform,opacity}
+/* 2.2 live-tinted glass: mini + full player chrome tinted <=18% */
+.mini.w31-tinted{background:color-mix(in srgb,var(--w31tint) 16%,var(--glass-bg))}
+.full.w31-tinted{background:color-mix(in srgb,var(--w31tint) 12%,var(--bg))}
+/* 2.4 playing-artwork bloom (4th sanctioned --bloom site) */
+.art-disc.spin{box-shadow:0 0 28px color-mix(in srgb,var(--w31tint,var(--green)) 35%,transparent)}
+/* 1.21b full-player marquee: only when JS marks overflow (.mq) */
+.full-name.mq{white-space:nowrap;overflow:hidden}
+.full-name.mq>span{display:inline-block;white-space:nowrap;animation:w31mq 6s ease-in-out infinite alternate}
+@keyframes w31mq{from{transform:translateX(0)}to{transform:translateX(var(--mqx,0))}}
+/* 1.15 hold-ring language on media rows (350ms fill, slide-off cancels) */
+.w31-hold{position:relative}
+.w31-hold.holding{transform:scale(.96)}
+.w31-hold.holding::after{content:'';position:absolute;inset:0;border-radius:inherit;padding:2.5px;
+  background:conic-gradient(var(--green) var(--lp),color-mix(in srgb,var(--fg) 14%,transparent) var(--lp));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+  pointer-events:none;animation:lp-fill .35s linear forwards}
+/* 1.13 pull-to-refresh ring (media lists with a real refetch only) */
+.w31-ptr{position:relative}
+.w31-ptr-ring{position:absolute;left:50%;top:2px;z-index:5;width:30px;height:30px;margin-left:-15px;border-radius:50%;
+  pointer-events:none;opacity:0;transform:scale(.6);
+  background:conic-gradient(var(--green) var(--ptrp,0deg),color-mix(in srgb,var(--fg) 12%,transparent) var(--ptrp,0deg))}
+.w31-ptr.pulling .w31-ptr-ring{opacity:1;transform:scale(1)}
+.w31-ptr.done .w31-ptr-ring{opacity:1;transform:scale(1);--ptrp:360deg;transition:opacity var(--d-2) var(--ease-out)}
+/* 2.13 themed skeleton shimmer (media scope): 6% category-accent tint */
+.w31-media .skel{background-image:linear-gradient(100deg,
+  color-mix(in srgb,var(--skelacc,var(--green)) 6%,var(--s2)) 40%,
+  color-mix(in srgb,var(--skelacc,var(--green)) 14%,var(--s3)) 50%,
+  color-mix(in srgb,var(--skelacc,var(--green)) 6%,var(--s2)) 60%)}
+/* 2.11 artwork-led colour: active media row border tint (<=40% mix) */
+.row.w31-active{border-color:color-mix(in srgb,var(--w31tint,var(--green)) 40%,transparent)}
+/* 3.7 shimmer text for LIVE states (media badges/status only) */
+.w31-live{background:linear-gradient(100deg,var(--fg) 30%,var(--green) 50%,var(--fg) 70%);
+  background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:w31shim 1.4s linear infinite;font-weight:700}
+@keyframes w31shim{from{background-position:120% 0}to{background-position:-120% 0}}
+/* 2.6 depth of field: blurred poster backdrop copy behind media heroes */
+.w31-hero{position:relative;overflow:hidden}
+.w31-hero-blur{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  filter:blur(24px) saturate(1.3);transform:scale(1.25);opacity:.55;pointer-events:none}
+.w31-hero>*{position:relative}
+/* 2.6 sticky filter rows: content dissolves under them (fade mask) */
+.w31-stickyfade{position:sticky;top:0;z-index:4;background:var(--bg);
+  -webkit-mask-image:linear-gradient(180deg,#000 82%,transparent);mask-image:linear-gradient(180deg,#000 82%,transparent)}
+/* 1.24 skeleton resolve order on media grids */
+.w31-media .skelresolve-in{animation:skelin var(--d-2) var(--ease-out) both}
+/* 1.14 queue-row swipe reveal */
+.qrow-wrap{position:relative;overflow:hidden}
+.qrow-wrap .qrow-act{position:absolute;right:0;top:0;bottom:0;width:72px;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--green) 16%,var(--s2));color:var(--green);font-weight:700}
+.qrow-wrap .row{transition:transform var(--d-2) var(--ease-out);background:var(--bg)}
+
+/* W31-P6a — Phase 6 shell/motion/delight finish (B6a). One marked
+   block; token-driven only; transform/opacity motion (the 1.23 focus
+   draw animates outline-offset because the item itself specifies an
+   outline draw). The global reduced-motion block neutralises all. */
+/* 1.1 route transitions, two depths */
+@keyframes w31-rt-drill { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes w31-rt-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes w31-rt-back { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
+.view.rt-drill { animation: w31-rt-drill var(--d-3) var(--ease-out); }
+.view.rt-lat { animation: w31-rt-fade var(--d-3) var(--ease-out); }
+.view.rt-back { animation: w31-rt-back var(--d-3) var(--ease-out); }
+.view.rt-fwd { animation: w31-rt-fade var(--d-3) var(--ease-out); }
+/* 1.12 boot cinematic */
+.bootcine { position: fixed; inset: 0; z-index: 400; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; transition: opacity .18s var(--ease-out); }
+.bootcine.out { opacity: 0; pointer-events: none; }
+.bootcine-aurora { position: absolute; inset: 0; background: radial-gradient(60% 40% at 18% 0%, color-mix(in srgb, var(--green) 13%, transparent), transparent 70%), radial-gradient(50% 36% at 88% 8%, color-mix(in srgb, var(--cyan) 11%, transparent), transparent 70%); animation: w31-rt-fade .5s var(--ease-out); }
+.bootcine-mark { font-family: var(--font-display); font-size: 44px; font-weight: 700; letter-spacing: .12em; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; animation: w31-bootdraw .7s var(--ease-out); }
+@keyframes w31-bootdraw { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+.bootcine-sub { color: var(--fg2); font-size: 13px; animation: w31-rt-fade .6s var(--ease-out) .15s backwards; }
+/* 1.19 confetti canvas + reduced-motion burst ring */
+.w31-confetti { position: fixed; inset: 0; z-index: 390; pointer-events: none; }
+.w31-burst { position: fixed; left: 50%; top: 34%; width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 50%; border: 2px solid var(--green); z-index: 390; pointer-events: none; }
+/* 1.10 draw-on icons: toast check + empty-state glyphs draw in */
+@keyframes w31-drawon { from { stroke-dashoffset: 60; } to { stroke-dashoffset: 0; } }
+.toast .toast-ic svg path, .toast .toast-ic svg circle, .state .state-ic svg path, .state .state-ic svg circle { stroke-dasharray: 60; animation: w31-drawon .5s var(--ease-out); }
+.toast .toast-ic svg path, .toast .toast-ic svg circle { animation-duration: .25s; }
+/* 2.8 animated gradient text — ONLY the sanctioned sites carry
+   .gradtext-anim: brand mark, home greeting keyword, full-player
+   title (PlayerUI adopts the class — coordinator wiring). */
+@keyframes w31-gradshift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+.gradtext-anim { background-size: 200% 100%; animation: w31-gradshift 8s ease-in-out infinite; }
+.fp-title.gradtext-anim { background-size: 200% 100%; }
+/* 1.23 focus draw + primary CTA sheen (hover-capable pointers only) */
+@keyframes w31-focusdraw { from { outline-offset: 6px; } to { outline-offset: 2px; } }
+:focus-visible { animation: w31-focusdraw .12s var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .btn:not(.ghost) { position: relative; overflow: hidden; }
+  .btn:not(.ghost)::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, color-mix(in srgb, #fff 22%, transparent) 50%, transparent 60%); transform: translateX(-110%); transition: transform var(--d-3) var(--ease-out); pointer-events: none; }
+  .btn:not(.ghost):hover::after { transform: translateX(110%); }
+}
+/* 4.6 scroll feel: overscroll containment + accent edge glow on the
+   shell scroller; scroll-end hairline bounce is the 1.22 hairline's
+   own settle (transform-only, no sound). */
+html { overscroll-behavior-y: contain; }
+body { overscroll-behavior: contain; }
+.main-area { overscroll-behavior: contain; }
+/* 5.10 favourites bar — bottom stack: sits above the tab bar, below
+   toasts; the FAB keeps its own lift contract (gate-checked). */
+.favbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(64px + var(--mini-lift, 0px)); z-index: 62; display: flex; align-items: center; gap: 2px; max-width: min(94vw, 560px); padding: 4px; border-radius: var(--r-pill); background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); box-shadow: var(--sh-3); animation: w31-rt-fade var(--d-2) var(--ease-out); }
+.favbar-b { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--fg2); font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.favbar-b.on { background: var(--s2); color: var(--fg); }
+.favbar-b span { max-width: 74px; overflow: hidden; text-overflow: ellipsis; }
+.favbar-x { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--fg3); cursor: pointer; flex: 0 0 auto; }
+/* 6.3 coach hint — bottom stack card, never over its control */
+.coachhint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(124px + var(--mini-lift, 0px)); z-index: 95; display: flex; align-items: center; gap: 8px; max-width: min(92vw, 480px); padding: 10px 8px 10px 14px; border-radius: var(--r); background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); box-shadow: var(--sh-3); color: var(--fg); font-size: 13.5px; animation: w31-rt-fade var(--d-2) var(--ease-out); }
+.coachhint button { width: 44px; height: 44px; margin: -8px 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--fg3); cursor: pointer; flex: 0 0 auto; }
+/* 6.1 mark draw-on (Roz card instance) */
+.jbmark-swoosh { stroke-dasharray: 62; stroke-dashoffset: 0; animation: w31-jbdraw .9s var(--ease-out); }
+@keyframes w31-jbdraw { from { stroke-dashoffset: 62; } to { stroke-dashoffset: 0; } }
+.roz-mark { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.roz-made { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.drawnheart { vertical-align: -1px; }
+/* 1.16 Main Tools drag lift */
+.mt-chip { transition: transform var(--d-2) var(--ease-spring), box-shadow var(--d-2) var(--ease-out); }
+.mt-chip.dragging { box-shadow: var(--sh-3); z-index: 5; position: relative; cursor: grabbing; transition: none; }
+/* 1.16 FAB glide (AiFab .gliding) */
+.aifab.gliding { transition: left var(--d-3) var(--ease-spring), top var(--d-3) var(--ease-spring); }
+/* 1.18 tilt specular (hero card; transform set by useTilt) */
+.hero { transform-style: preserve-3d; position: relative; }
+.hero::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(40% 30% at var(--specx, 50%) 0%, color-mix(in srgb, var(--fg) 7%, transparent), transparent 70%); }
+/* 7.6 skeleton-first tool view */
+.view-skel { display: grid; gap: 12px; padding-top: 2px; }
+/* Landscape compact chrome (brief Phase-6): phones in landscape get
+   a 40px topbar and no tab bar — drawer + palette carry navigation. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .topbar { min-height: 40px; padding-top: 2px; padding-bottom: 2px; }
+  .nav { display: none; }
+  .favbar { bottom: 10px; }
+  .coachhint { bottom: 64px; }
+}
+/* W31-P6a fix: pin coach mark is an in-flow strip under the topbar —
+   anchored beside the pin star it teaches, covering nothing. */
+.coachstrip { position: fixed; top: calc(56px + env(safe-area-inset-top, 0px)); left: 12px; right: 12px; z-index: 94; display: flex; align-items: center; gap: 8px; margin: 0 auto; max-width: 560px; padding: 8px 8px 8px 12px; background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); box-shadow: var(--sh-3); border-radius: var(--r-sm); background: var(--s2); border: 1px solid var(--hairline); color: var(--fg); font-size: 13.5px; animation: w31-rt-fade var(--d-2) var(--ease-out); }
+.coachstrip button { width: 44px; height: 44px; margin: -8px 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--fg3); cursor: pointer; flex: 0 0 auto; }
+
+/* W31-COORD (coordinator fixes): 6.6(c) Konami retro skin for the Games hub —
+   a session-scoped filter treatment toggled from games.jsx. */
+.view.games-retro { filter: sepia(.45) hue-rotate(-14deg) saturate(1.35) contrast(1.05); }
+.view.games-retro img { image-rendering: pixelated; }
+
+/* W31-COORD 3.9 reading experience: long-form surfaces get a designed reading
+   measure (66ch), 1.65 leading and paragraph rhythm — not spilled text.
+   Devotional verse lines already lead at 1.6–1.7 by their own type system;
+   this adds the measure. The lyrics/karaoke pane takes the same leading —
+   highlight colours and sync behaviour are untouched. */
+.mdprev { max-width: 66ch; line-height: 1.65; }
+.mdprev p { margin: 0 0 var(--sp-4); }
+.mdprev li { margin-bottom: var(--sp-1); }
+.lyrics { line-height: 1.65; }
+.f-dev { max-width: 66ch; }

@@ -1,0 +1,91 @@
+/* ============================================================= W31 Phase 5 (B5b)
+   Tool-scope treatments for editors / games / calculators / data tools.
+   Look & feel ONLY. Every colour comes from the existing tokens and the
+   category accent pair (--ca / --ca2 the ToolFrame sets); no new hues.
+   All animation is transform/opacity and rides the ONE global
+   reduced-motion system: keyframes live inside the same
+   no-preference + html:not([data-motion="reduced"]) gate the rest of
+   the app uses — no per-component reduced-motion blocks. */
+
+/* ---- 2.10 ToolFrame hero art -------------------------------------
+   The category mesh at 40% bleeds from behind the icon tile's corner;
+   the tool glyph repeats at 24px in the accent as a watermark on the
+   tile's corner. The header clips nothing else; content sits above. */
+.toolframe-h{position:relative}
+.tf-mesh{position:absolute;left:-14px;top:-16px;width:190px;height:74px;
+  -webkit-mask-image:radial-gradient(120px 52px at 30px 30px,#000 30%,transparent 78%);
+  mask-image:radial-gradient(120px 52px at 30px 30px,#000 30%,transparent 78%)}
+.toolframe-tile{position:relative}
+.tf-wm{position:absolute;right:-7px;bottom:-7px;color:var(--ca,var(--green));
+  opacity:.38;pointer-events:none;line-height:0}
+
+/* ---- 3.3 ToolFrame display title ----------------------------------
+   Display face + spec §3 optical sizing/tracking on the frame title.
+   --catface (set by the shell's category system where a category face
+   exists) wins; a user font-pack choice rewrites --font-display at the
+   root, so it overrides both — sovereignty preserved. The 360px gate
+   is untouched: size/ellipsis behaviour stays on .t-tooltitle. */
+.tf-title{font-family:var(--catface,var(--font-display));font-optical-sizing:auto}
+
+/* ---- 2.14 clause: frame toolbar scroll shadow --------------------- */
+.toolframe-bar{transition:box-shadow var(--d-2) var(--ease-out)}
+.toolframe-bar.scrolled{box-shadow:var(--sh-1)}
+
+/* ---- 2.13 themed skeleton shimmer (tool scope) --------------------
+   The shimmer sweep carries a 6% tint of the frame's category accent.
+   --ca is set on the ToolFrame tile; tool content inherits the shell's
+   frame accent via the cascade var the App shell scope provides, and
+   falls back to the brand green where a tool renders frame-less. */
+.skel.skel-cat{background-image:linear-gradient(100deg,transparent 40%,
+  color-mix(in srgb,var(--ca,var(--green)) 6%,transparent) 50%,transparent 60%)}
+.skel-catwrap .skel-line{background-image:linear-gradient(100deg,transparent 40%,
+  color-mix(in srgb,var(--ca,var(--green)) 6%,transparent) 50%,transparent 60%)}
+
+/* ---- 1.20 animated empty states ------------------------------------
+   The formalised Empty gains its living treatment: the icon tile
+   floats 6px on a 3s loop with a soft accent shadow pulsing beneath
+   it; search/no-results empties get a radar sweep inside the tile. */
+.w31-empty .state-ic{position:relative}
+.w31-empty .state-ic.radar{overflow:hidden}
+.w31-empty .state-ic.radar::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from 0deg,transparent 0deg,
+  color-mix(in srgb,var(--ca,var(--green)) 35%,transparent) 50deg,transparent 90deg)}
+
+/* ---- 1.11 morphing icons ------------------------------------------- */
+.morph-ic{position:relative;display:inline-grid;place-items:center;flex:0 0 auto;line-height:0}
+.morph-ic>span{grid-area:1/1;display:grid;place-items:center;
+  transition:transform var(--d-2) var(--ease-out),opacity var(--d-2) var(--ease-out)}
+.morph-ic .mi-b{transform:scale(.55) rotate(-30deg);opacity:0}
+.morph-ic.on .mi-a{transform:scale(.55) rotate(30deg);opacity:0}
+.morph-ic.on .mi-b{transform:none;opacity:1}
+
+/* ---- 1.21(c) calculator result pop ---------------------------------- */
+.calc-pop{display:inline-block}
+
+/* ---- 1.9 / 3.8 numeric discipline (tool scope) -----------------------
+   Tabular numerals on every data surface in scope: mono rows, big
+   price/result figures, game stats and calculator I/O never jitter. */
+.mono,.big,.stat .v,.w31-tab{font-variant-numeric:tabular-nums}
+
+/* b/strong elements that took a ramp class in the 3.1 sweep keep their
+   bold voice — the ramp's body weight must not unbold a name. */
+b.t-body-sm,b.t-body,b.t-caption,strong.t-body-sm,strong.t-body{font-weight:600}
+
+/* ---- motion (single global gate, as everywhere else) ---------------- */
+@media (prefers-reduced-motion:no-preference){
+  html:not([data-motion="reduced"]) .w31-empty .state-ic{
+    animation:w31-float 3s ease-in-out infinite;
+    box-shadow:0 10px 22px -12px color-mix(in srgb,var(--ca,var(--green)) 55%,transparent)}
+  html:not([data-motion="reduced"]) .w31-empty .state-ic.radar::after{
+    animation:w31-radar 2.6s linear infinite}
+  html:not([data-motion="reduced"]) .calc-pop{animation:w31-pop var(--d-2) var(--ease-spring) both}
+  html:not([data-motion="reduced"]) .num-pop{animation:w31-pop var(--d-2) var(--ease-spring) both}
+}
+@keyframes w31-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes w31-radar{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes w31-pop{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
+
+/* ---- 1.7 parallax wrapper -------------------------------------------
+   Transform is set from JS (rAF, clamped ±12px); the wrapper itself is
+   layout-neutral so headers keep their box. */
+.plx{will-change:transform}

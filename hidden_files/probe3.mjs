@@ -1,0 +1,32 @@
+import { createServer } from 'node:http'; import { readFile } from 'node:fs/promises'; import { extname, join, normalize } from 'node:path';
+import puppeteer from 'puppeteer-core'; import { resolveChromePath } from '../scripts/chrome-path.mjs';
+const DIST = new URL('../dist', import.meta.url).pathname;
+const MIME = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.woff2':'font/woff2','.json':'application/json','.png':'image/png','.webmanifest':'application/manifest+json' };
+const srv = createServer(async (req,res)=>{ try{ let p=decodeURIComponent(new URL(req.url,'http://x').pathname); if(p==='/')p='/index.html'; const d=await readFile(join(DIST, normalize(p).replace(/^(\.\.[/\\])+/ ,''))); res.writeHead(200,{'content-type':MIME[extname(p)]||'application/octet-stream'}); res.end(d);}catch{res.writeHead(404);res.end('nf');} });
+await new Promise(r=>srv.listen(0,'127.0.0.1',r)); const port=srv.address().port;
+const browser = await puppeteer.launch({ executablePath: resolveChromePath(), args:['--no-sandbox','--disable-dev-shm-usage'] });
+const page = await browser.newPage();
+await page.emulate({ viewport:{width:Number(process.env.W||360),height:Number(process.env.H||800),isMobile:true,hasTouch:true,deviceScaleFactor:2}, userAgent:'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36' });
+const errs=[]; page.on('pageerror',e=>errs.push(e.message));
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+await page.goto(`http://127.0.0.1:${port}/index.html`,{waitUntil:'load',timeout:120000});
+await sleep(5000);
+await page.evaluate(()=>{ const b=[...document.querySelectorAll('button')].find(x=>/Enter Free Sandbox/.test(x.innerText)); if(b)b.click(); });
+await sleep(4000);
+await page.evaluate(()=>{ const b=document.querySelector('[data-rail="full"]'); if(b)b.click(); });
+await sleep(1200);
+// open dock gear tab and place a burner (placeGear selects it + opens panel)
+await page.evaluate(()=>{ const b=document.querySelector('[data-docktab="gear"]'); if(b)b.click(); });
+await sleep(1000);
+await page.evaluate(()=>{ const g=document.querySelector('[data-gear="burner"]'); if(g)g.click(); });
+await sleep(1000);
+const res = await page.evaluate(()=>{
+  const p=document.querySelector('[data-sidepanel="1"]'); if(!p) return {panel:false};
+  p.scrollTop=p.scrollHeight;
+  const t=p.innerText;
+  return { panel:true, gearI:(t.match(/Gear —/gi)||[]).length, gearCaps:(t.match(/GEAR —/g)||[]).length, tail:t.slice(-400) };
+});
+console.log(JSON.stringify(res,null,1)); console.log('errs',errs);
+await sleep(500);
+await page.screenshot({ path:'/home/hatch/workspace/matter-lab-shots/ui-a/selection-' + (process.env.W||360) + 'x' + (process.env.H||800) + '.png' });
+await browser.close(); srv.close();
