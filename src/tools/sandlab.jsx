@@ -526,7 +526,7 @@ export function MatterLab(props) {
       const rv = wsDebug(e, canvasRef.current);
       if (rv) { try { const g = globalThis.__matterlab; if (g) { g.repaintRafRef = repaintRafRef.current; g.repaintScheduledRef = repaintScheduledRef.current; } } catch { /* noop */ } }
     };
-    const loop = () => { tick(); repaintRafRef.current = requestAnimationFrame(loop); };
+    const loop = () => { tick(); if (!document.hidden) repaintRafRef.current = requestAnimationFrame(loop); };
     repaintRafRef.current = requestAnimationFrame(loop);
     const onRepaint = () => { repaintScheduledRef.current = false; };
     window.addEventListener('repainted', onRepaint);
