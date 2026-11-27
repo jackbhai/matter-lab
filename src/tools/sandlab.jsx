@@ -1823,6 +1823,9 @@ export function MatterLab(props) {
       else if (ev.key === 'f' || ev.key === 'F') { if (kbRef.current.toggleFs) kbRef.current.toggleFs(); }
       else if ((ev.key === 'h' || ev.key === 'H') && onHome) onHome();
       else if (/^[1-9]$/.test(ev.key)) { const t2 = TOOLS[Number(ev.key) - 1]; if (t2) setTool(t2[0]); }
+      else if (ev.key === 'm' || ev.key === 'M') setSpeedI((s2) => (s2 + 1) % SPEEDS.length); // cycle speed
+      else if (ev.key === 'p' || ev.key === 'P') setPicker((p2) => !p2); // open/close substance picker
+      else if (ev.key === 'g' || ev.key === 'G') setSideOpen((s2) => !s2); // settings panel
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
