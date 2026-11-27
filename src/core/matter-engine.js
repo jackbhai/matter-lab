@@ -798,6 +798,12 @@ export class MatterEngine {
     const s = this._rng() < 0.5 ? 1 : -1;
     if (this._tryStep(i, x, y, gx + rx * s, gy + ry * s, rec, true)) return;
     if (this._tryStep(i, x, y, gx - rx * s, gy - ry * s, rec, true)) return;
+    // Bergmann-Mark surface tension: viscous liquids with no free path below
+    // hop/drag sideways — droplet and oil-slick realism (high-viscosity side
+    // channel; everyday liquids have already returned above).
+    if ((rec.viscosity || 0) >= 0.35 && this._rng() < (rec.viscosity || 0) * 0.8) {
+      this._tryStep(i, x, y, rx * (this._rng() < 0.5 ? 1 : -1), ry * 0, rec, false);
+    }
     // lateral dispersion, throttled by viscosity
     const visc = rec.viscosity || 0;
     if (this._rng() < 1 - visc * 0.75) {

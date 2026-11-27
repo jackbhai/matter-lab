@@ -1999,7 +1999,7 @@ export function MatterLab(props) {
           onRedo={redo}
           paused={paused}
           onTogglePause={() => setPaused(!paused)}
-          speedLabel={`${SPEEDS[speedI]}×`}
+          speedLabel={`${(powerOn ? 10 : 1) * SPEEDS[speedI]}×`}
           onCycleSpeed={() => setSpeedI((speedI + 1) % SPEEDS.length)}
           onMenu={() => openSheet('menu')}
           menuBadge={unread}
