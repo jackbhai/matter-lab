@@ -18,6 +18,10 @@ export const TIERS = [
   { cols: 480, rows: 270 },
   { cols: 384, rows: 216 },
   { cols: 320, rows: 180 },
+  /* Matter Lab Ultra — the deepest tier (2 GB / low-CPU phones): aspect
+     is kept by the sandbox via dimsForTier, so cells stay square on any
+     screen and the world reads smaller, not stretched. */
+  { cols: 192, rows: 108 },
 ];
 
 export const GEAR = [
@@ -94,6 +98,11 @@ export class MatterEngine {
     this.airVX = new Float32Array(this.pw * this.ph2);
     this.airVY = new Float32Array(this.pw * this.ph2);
     this.airCols = this.pw; this.airRows = this.ph2;
+    // Matter Lab Ultra: a positive maxParts caps the particle field for
+    // low-end devices — movement runs at reduced duty while the reaction
+    // pass stays full-rate (the movement cap is the cheaper of the two).
+    this.maxParts = 0;
+    this._mvCount = 0;
     this._powered = new Set(); // gear object ids carrying charge last electric pass (reused)
     // internal scratch (not part of the contract surface)
     this._act = new Uint32Array(n);        // tick last became active (frontier)
@@ -136,6 +145,9 @@ export class MatterEngine {
     // UI gyro. windX/windY remain a separate air/wind field (fans, the
     // wind tool, gas drift); they no longer carry the gravity direction.
     this.gravMag = 1;
+    // Matter Lab Ultra — Power Mode: gravMag > 1 multiplies the dominant
+    // movement step (stronger gravity). Only settable via setGravityStrength.
+    this.gravExtra = 1;
     this.windX = 0; this.windY = 0;
     this.tick = 0; this.particles = 0;
     // W32U-5 chunked active-region state (32x32 chunks; see _recountChunks)
@@ -402,6 +414,26 @@ export class MatterEngine {
     return { x: this.gx, y: this.gy, mag: this.gravMag, domX: dx, domY: dy, effX: this.gx * this.gravMag, effY: this.gy * this.gravMag };
   }
 
+  /** Matter Lab Ultra — Power Mode: set gravity strength beyond the default
+      range (values > 1 multiply the dominant move step; the ≥1 gates pass
+      and all other behaviours are unchanged). */
+  setGravityStrength(mag) {
+    const m = Number(mag);
+    if (!Number.isFinite(m)) return this.gravMag;
+    this.gravMag = Math.max(0, m);
+    this.gravExtra = m > 1 ? m : 1;
+    return this.gravMag;
+  }
+
+  /** Matter Lab Ultra: set the particle cap (0 = unlimited). When the world
+      is over the cap, the movement pass runs at 1/4 duty — reactions and
+      fills keep full rate so the lab still responds — while any value set
+      to 0 lifts the degradation immediately. */
+  setMaxParts(n) {
+    this.maxParts = Math.max(0, n | 0);
+    this._mvCount = 0;
+  }
+
   /** W32U-6: ambient (room) temperature control, clamped -30..60 C. Every
       equilibration/cooling baseline in the engine reads this.ambientT. */
   setAmbientT(c) {
@@ -666,6 +698,10 @@ export class MatterEngine {
   }
 
   _movePass() {
+    // Matter Lab Ultra: particle cap — when over the cap, movement runs at
+    // 1/4 duty (every 4th call). Falls between the two extremes above 1x
+    // the cap so engines past it creep along; 0 disables the cap entirely.
+    if (this.maxParts > 0 && this.particles > this.maxParts && ((this._mvCount++ & 3) !== 0)) return;
     const { cols, rows, el } = this;
     // P3: movement consumes the DOMINANT axis step (dgx,dgy) — identical
     // to the old integer gx/gy at axis-aligned vectors — plus a lateral
@@ -673,7 +709,8 @@ export class MatterEngine {
     // (0 at axis alignment, 1 at 45°) is the probability that a falling /
     // rising cell takes the diagonal (dominant + lateral) step first.
     // At the default (0,1) pLat is 0 and no extra RNG is consumed.
-    const [gx, gy] = this._gravDom();
+    let [gx, gy] = this._gravDom();
+    if (this.gravExtra > 1) { gx *= this.gravExtra; gy *= this.gravExtra; } // Power Mode — stronger gravity multiplies the dominant step
     const rx = gy, ry = -gx; // lateral "right" in gravity frame
     const major = Math.max(Math.abs(this.gx), Math.abs(this.gy));
     const minor = Math.min(Math.abs(this.gx), Math.abs(this.gy));

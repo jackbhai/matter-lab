@@ -10,7 +10,7 @@ import { toast } from './kit.jsx';
 import { GEAR } from '../core/matter-engine.js';
 import * as Game from '../game/game.js';
 
-export default function SettingsPanel({ open, onClose, tools, speeds, tool, setTool, cloneRef, brush, setBrush, shape, setShape, paused, setPaused, engine, handleSimError, undo, clearWorld, speedI, setSpeedI, viewMode, setViewMode, textureOn, setTextureOn, texQuality, setTexQualityQ, rendererPref, applyRendererPref, rendererNote, heatRamp, applyHeatRamp, zoom, setView, viewRef, fontScale, applyFontScale, hapticsOn, applyHaptics, openMessages, unread, openSheet, recipeLen, selObj, applyObjLevel, vesselKinds, fixedSizeKinds, refreshSel, removeSelObj, applyObjScale, toggleObjLock, duplicateSelObj, gyro, gravDir, setGrav, toggleGyro, calibrateGyro, muted, setMuted }) {
+export default function SettingsPanel({ open, onClose, tools, speeds, tool, setTool, cloneRef, brush, setBrush, shape, setShape, paused, setPaused, engine, handleSimError, undo, clearWorld, speedI, setSpeedI, viewMode, setViewMode, textureOn, setTextureOn, texQuality, setTexQualityQ, rendererPref, applyRendererPref, rendererNote, heatRamp, applyHeatRamp, zoom, setView, viewRef, fontScale, applyFontScale, hapticsOn, applyHaptics, openMessages, unread, openSheet, recipeLen, selObj, applyObjLevel, vesselKinds, fixedSizeKinds, refreshSel, removeSelObj, applyObjScale, toggleObjLock, duplicateSelObj, gyro, gravDir, setGrav, toggleGyro, calibrateGyro, muted, setMuted, perf, power, setPower }) {
   if (!open) return null;
   return (
     <div className="glass" data-sidepanel="1" style={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: 'min(264px, calc(100% - 16px))', zIndex: 7, overflowY: 'auto', padding: 10, borderRadius: 14 }}>
@@ -78,7 +78,7 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
       )}
       <div style={{ display: 'flex', gap: 4, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }} role="group" aria-label="Zoom">
         <span className="dim sm">Zoom {Math.round(zoom * 100)}%</span>
-        {[1.5, 2, 3].map((z) => (
+            {[1.5, 2, 3, ...(power ? [5] : [])].map((z) => (
           <button key={z} className={`btn sm ${Math.abs(zoom - z) < 0.01 ? '' : 'ghost'}`} onClick={() => setView(z, viewRef.current.fx, viewRef.current.fy)}>{z}×</button>
         ))}
         <button className="btn ghost sm" onClick={() => setView(1, null, null)}>Reset</button>
@@ -170,6 +170,22 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
       <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }} className="sm">
         <input type="checkbox" checked={muted} onChange={(e) => setMuted(e.target.checked)} /> Mute reaction cards
       </label>
+      {perf && (
+        <>
+          <div className="seclabel" style={{ marginTop: 12 }}>Performance</div>
+          <p className="dim sm" style={{ margin: 4, fontSize: 11, lineHeight: 1.35 }}>{perf.device}</p>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }} role="group" aria-label="Particle cap">
+            <span className="dim sm">Movement cap</span>
+            {[0, 4000, 8000, 16000].map((n) => (
+              <button key={n} className={`btn sm ${perf.capParts === n ? '' : 'ghost'}`} aria-pressed={perf.capParts === n} onClick={() => perf.applyCap(n)}>{n || 'Off'}</button>
+            ))}
+            <span className="dim sm"> (movement ~¼ duty when capped)</span>
+          </div>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }} className="sm">
+            <input type="checkbox" checked={!!power} onChange={(e) => setPower(e.target.checked)} /> Power Mode — 10× speed, stronger gravity, Zoom 5×
+          </label>
+        </>
+      )}
     </div>
   );
 }

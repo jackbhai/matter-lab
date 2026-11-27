@@ -1,7 +1,7 @@
 # Matter Lab
 
 **A falling-sand sandbox × a real chemistry lab — in one open world.**
-Paint any of **1,392 substances**, place working lab gear (beakers, burners, cooling
+Paint any of **1,822 substances**, place working lab gear (beakers, burners, cooling
 coils, wires, switches, electrodes…), and watch everything react with everything.
 
 🔴 **Live demo:** https://jackbhai.github.io/matter-lab/
@@ -18,7 +18,7 @@ The app now opens on a **landing homepage** (its own flask logo, live numbers, a
 - **Scene Gallery** — four showcase scenes (Volcano, The Bench, Electrolysis,
   Golden Rain) with real rendered thumbnails; opening one loads it in the sandbox.
 - **Custom Lab** — define your own substance by its properties; it reacts by the
-  same rules as the built-in 1,392.
+  same rules as the built-in 1,822.
 
 One tap on the tool's Home control returns to the homepage. The whole app wears the
 v2 **lab-glass** identity — deep slate/teal glass panels, fine borders, one teal-cyan
@@ -30,9 +30,9 @@ beaker-on-burner boiling and electrolysis) is unchanged underneath.
 
 | | |
 |---|---|
-| Substances | **1,392** — elements, compounds, solutions, alloys, foods, fuels, explosives, lab reagents |
-| Named reactions | **22,542** pairs with a real, distinct reaction outcome |
-| Decision coverage | **100%** — all 968,136 substance pairs resolve via a named mechanism (pair rule → family rule → property-computed verdict); no pair is a shrug |
+| Substances | **1,822** — elements, compounds, solutions, alloys, foods, fuels, explosives, lab reagents |
+| Named reactions | **34,775** pairs with a real, distinct reaction outcome |
+| Decision coverage | **100%** — all 1,660,753 substance pairs resolve via a named mechanism (pair rule → family rule → property-computed verdict); no pair is a shrug |
 | Property engine | Real data underneath: standard potentials (E°), solubility products (Ksp), pKa, Hansen solubility parameters — verdicts cite the numbers they used |
 | In-world proofs | Beaker-on-burner boils at 100.0 °C · electrolysis splits water · thermite makes iron · golden-rain PbI₂ · pour conservation 0.00% drift |
 
@@ -77,7 +77,7 @@ browser. `node scripts/verify-local.mjs` runs a headless smoke check of the buil
 
 - `src/tools/sandlab.jsx` — the tool UI (toolbar, tile panel, side rail, sheets)
 - `src/core/matter-engine.js` — the simulation engine
-- `src/core/matter/` + `matter-elements.js` — the 1,392-substance catalogue
+- `src/core/matter/` + `matter-elements.js` — the 1,822-substance catalogue
 - `src/core/matter-reactions.js` — the named-reaction grids
 - `src/core/matter-verdicts.js` + `matter-chemdata.js` — the property/verdict engine
 - `src/core/matter-sound.js` + `matter-acoustics.js` — procedural audio
@@ -94,3 +94,23 @@ app (manifest + service worker ship in `public/`). A Capacitor Android project
 (appId `com.jackbhai.matterlab`) lives in `android/` — build the AAB on a machine
 with Android Studio: `npm run build && npx cap sync android && npx cap open android`.
 Privacy: everything is stored locally on your device — see `privacy.html` in the app.
+
+## Performance (2 GB / low-CPU phones)
+
+Matter Lab detects the device once (`navigator.deviceMemory`, Android flags,
+`hardwareConcurrency`) and adjusts automatically — there is nothing to
+configure unless you want to:
+
+- **Low-end start tier** — on 2 GB phones the sandbox starts at the smallest
+  resolution tier (192×108 cells, square-scaled to the viewport) instead of
+  480×270.
+- **Movement cap** — the engine offers a particle-cap toggle (Off / 4,000 /
+  8,000 / 16,000). When over the cap the movement pass runs at ~¼ duty while
+  reactions and fills keep full rate, so the world still responds but the
+  simulation stays smooth on a slow CPU.
+- **Texture off by default** on low-end devices, and Speed tops out at 2×.
+- **Procedural sound is off** on low-end devices (silence, but every physics
+  reaction is still animated and reaction cards still announce).
+
+Everything here is reversible per-session and adaptive — on a good device the
+app always starts at the normal tier with textures and sound on.

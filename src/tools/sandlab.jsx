@@ -8,6 +8,7 @@ import { SUBSTANCES, BY_KEY, CATS, SUBSTANCE_COUNT } from '../core/matter-elemen
 import { MatterEngine, GEAR, TIERS } from '../core/matter-engine';
 import { MatterSound } from '../core/matter-sound';
 import { enabled as sfxEnabled, setEnabled as setSfxEnabled, hapticFx } from '../core/sfx';
+import { loadPerf, deviceSummary, setPerf as setPerfStore, autoStartTier } from '../core/perf.js';
 import { GLRenderer, buildGLTables } from '../render/gl-renderer';
 import { Card, Empty, toast } from '../ui/kit';
 import TopBar from '../ui/TopBar.jsx';
@@ -69,7 +70,8 @@ const TOOLS = [
   ['stir', 'Stir/Poke'], ['clone', 'Clone'], ['inspect', 'Inspect'], ['spark', 'Spark'],
   ['blast', 'Blast'], ['interact', 'Interact'], ['dropper', 'Dropper'],
 ];
-const SPEEDS = [0.25, 0.5, 1, 2, 4];
+const PERF = loadPerf(); // Matter Lab Ultra — device estimate + perf prefs (2 GB / low-CPU mobile)
+const SPEEDS = PERF.lowEnd ? [0.25, 0.5, 1, 2] : [0.25, 0.5, 1, 2, 4]; // low-end: no 4x mode (movement already capped ~4x)
 /* HOTFIX (portrait stretch): aspect-matched grid dims — every tier keeps its
    cell budget, but cols/rows follow the real viewport aspect so a cell is
    SQUARE on any screen (was: fixed 16:9 landscape grid stretched onto tall
@@ -83,7 +85,7 @@ const dimsForTier = (ti, aspect) => {
   return { cols, rows };
 };
 const viewAspect = () => { try { const a = window.innerWidth / Math.max(1, window.innerHeight); return a > 0 && Number.isFinite(a) ? a : 16 / 9; } catch { return 16 / 9; } };
-const LS = { favs: 'omni:sandlab:favs', recent: 'omni:sandlab:recent', scenes: 'omni:sandlab:scenes', recipes: 'omni:sandlab:recipes' };
+const LS = { favs: 'omni:sandlab:favs', recent: 'omni:sandlab:recent', scenes: 'omni:sandlab:scenes', recipes: 'omni:sandlab:recipes', power: 'omni:sandlab:power' };
 const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota */ } };
 const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 4000); };
@@ -105,7 +107,7 @@ let RENDER_VER = 0;
 function texFor(rec) {
   const fams = rec.fams || [];
   if (rec.cls === 'powder') return [1, 0.13];
-  if (rec.cls === 'liquid') return [4, 0.08];
+  if (rec.cls === 'liquid') { if ((rec.key || '') === 'water') return [13, 0.20]; return [4, 0.08]; }
   if (rec.cls === 'gas') return [7, 0.10];
   if (rec.cls === 'solid') {
     if (fams.includes('wood')) return [3, 0.12];
@@ -160,6 +162,9 @@ const TEX_TILES = (() => {
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) T[10240 + y * 32 + x] = Math.round(Math.sin((x - y) / 32 * Math.PI * 2) * 60); // 10 glass sheen: diagonal band ±60
   for (let i = 0; i < 1024; i++) T[11264 + i] = Math.round((rnd() * 2 - 1) * 15); // 11 rubber matte: near-flat ±15
   { let rv = 0; for (let y = 0; y < 32; y++) { rv += (rnd() * 2 - 1) * 40; rv = Math.max(-80, Math.min(80, rv * 0.8)); for (let x = 0; x < 32; x++) T[12288 + y * 32 + x] = Math.round(rv + (rnd() * 2 - 1) * 16); } } // 12 copper streaks: warm per-row walk
+  /* Water film: fine vertical streaks + sparse tiny droplets (tile 13). */
+  for (let i = 0; i < 1024; i++) T[13312 + i] = Math.round(Math.sin((i % 32) * 0.42 + (i / 32) * 0.05) * 9);
+  for (let i = 0; i < 300; i++) T[13312 + (rnd() * 1024 | 0)] += Math.round(10 + rnd() * 30); // sparse droplets
   return T;
 })();
 buildRenderTables();
@@ -321,7 +326,7 @@ export function MatterLab(props) {
   /* W32U-4 state */
   const [viewMode, setViewMode] = useState('normal'); const viewModeRef = useRef('normal'); viewModeRef.current = viewMode;
   /* W32U-5 state: texture toggle, vessel size, selected gear object */
-  const [textureOn, setTextureOn] = useState(true); const textureOnRef = useRef(true); textureOnRef.current = textureOn;
+  const [textureOn, setTextureOn] = useState(() => !PERF.lowEnd); const textureOnRef = useRef(textureOn); textureOnRef.current = textureOn;
   /* P2: procedural-texture quality (GL path): 'auto' (High + governor
      auto-drop) | 'low' | 'med' | 'high', persisted like other settings. */
   const [texQuality, setTexQuality] = useState(() => { const q = lsGet('omni:sandlab:texq', 'auto'); return ['auto', 'low', 'med', 'high'].includes(q) ? q : 'auto'; });
@@ -378,6 +383,14 @@ export function MatterLab(props) {
   const [customsVer, setCustomsVer] = useState(0);
   const [cf, setCf] = useState({ name: '', cls: 'powder', colour: '#c8a24a', density: 1, flammability: 0, acidity: 0, ph: 7, solubility: 0, boil: '' });
   const speedRef = useRef(2); speedRef.current = speedI; pausedRef.current = paused; mutedRef.current = muted;
+  /* Matter Lab Ultra — Power Mode: 10× speed + stronger gravity (>1). */
+  const [powerOn, setPowerOn] = useState(() => { try { return lsGet(LS.power, false); } catch { return false; } });
+  const powerRef = useRef(powerOn); powerRef.current = powerOn;
+  const applyPower = (v) => {
+    const on = !!v; setPowerOn(on); lsSet(LS.power, on);
+    const e = engRef.current; if (e) e.setGravityStrength(on ? 4 : 1);
+    toast(on ? 'Power Mode ON — 10× speed, stronger gravity' : 'Power Mode OFF');
+  };
   const toolRef = useRef('paint'); toolRef.current = tool; const selRecRef = useRef(null);
 
   const engine = () => engRef.current;
@@ -470,6 +483,8 @@ export function MatterLab(props) {
     toast('Simulation paused — something glitched. Your scene is safe.');
   };
   const resumeSim = () => { setSimError(null); setPaused(false); errOkSinceRef.current = performance.now(); startLoop(); };
+  /* Matter Lab Ultra — Performance section (Settings): apply the live particle cap. */
+  const applyPerfCap = (n) => { const e = engRef.current; if (e) e.setMaxParts(n); setPerfStore({ capParts: n }); toast(n ? `Movement cap ${n} — OK on this device` : 'Movement cap off'); };
   const resetEngine = () => {
     const old = engRef.current;
     let scene = lastSceneRef.current;
@@ -477,7 +492,8 @@ export function MatterLab(props) {
     let eng = null;
     const d0 = dimsForTier(tierI, aspectRef.current);
     try { eng = new MatterEngine(d0.cols, d0.rows); } catch (e2) { setConstructErr(String((e2 && e2.message) || e2)); return; }
-    engRef.current = eng; wireEngine(eng);
+    engRef.current = eng;
+    if (PERF.capParts > 0) eng.setMaxParts(PERF.capParts); wireEngine(eng);
     if (scene) { try { eng.deserialize(scene); } catch { /* start empty rather than crash */ } }
     rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows });
     errStreakRef.current = 0; setSimError(null); setPaused(false); startLoop();
@@ -486,7 +502,7 @@ export function MatterLab(props) {
 
   useEffect(() => {
     const w = boxRef.current ? boxRef.current.clientWidth : 360;
-    const ti = w >= 900 ? 0 : 1;
+    const ti = autoStartTier(w >= 900 ? 0 : 1); // low-end devices start at the deepest tier (2 GB phones)
     aspectRef.current = viewAspect();
     setTierI(ti);
     govRef.current.tierIndex = ti; govRef.current.startTierIndex = ti; govRef.current.ladderStep = 0; govRef.current.tickRate = 60;
@@ -499,7 +515,8 @@ export function MatterLab(props) {
       setConstructErr(String((e2 && e2.message) || e2)); return undefined;
     }
     engRef.current = eng;
-    const snd = new MatterSound(); sndRef.current = snd;
+    if (PERF.capParts > 0) eng.setMaxParts(PERF.capParts); // low-end: movement-duty cap
+    const snd = new MatterSound(); sndRef.current = (PERF.disableSound ? null : snd);
     wireEngine(eng);
     rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows });
     /* P1: create the WebGL2 renderer once. If WebGL2 is unavailable or the
@@ -518,7 +535,7 @@ export function MatterLab(props) {
         if (!pausedRef.current) {
           // HARDEN B: tick-rate cap is ladder step 1-2 (60 -> 45 -> 30 ticks/s at 1x).
           const dtMs = Math.min(100, now - lastT); lastT = now;
-          acc += (dtMs / 1000) * govRef.current.tickRate * SPEEDS[speedRef.current];
+          acc += (dtMs / 1000) * govRef.current.tickRate * SPEEDS[speedRef.current] * (powerRef.current ? 10 : 1); // Power Mode: 10× speed
           let steps = Math.floor(acc); acc -= steps; if (steps > 8) { steps = 8; acc = 0; }
           for (let s2 = 0; s2 < steps; s2++) e.step();
           if (Math.abs(e.windX) > 0.01 || Math.abs(e.windY) > 0.01) { e.windX *= 0.94; e.windY *= 0.94; } else { e.windX = 0; e.windY = 0; }
@@ -872,6 +889,29 @@ export function MatterLab(props) {
       }
     }
     if (!glWorld) { const octx = off.getContext('2d'); octx.putImageData(img, 0, 0); }
+    /* D7: heated liquids/gases — a soft ambient glow around >250 C cells
+       (hot water, boiling, workshop heat) drawn into the offscreen AFTER
+       the main pass: realistic amber halos under tubes, rising v realistically.
+       Sampled every other cell (step 2), radius 1.1, ~10% alpha. */
+    if (!glWorld && !PERF.lowEnd) {
+      const octx = off.getContext('2d');
+      const gx0 = (tick >> 1) & 1;
+      octx.save(); octx.globalCompositeOperation = 'lighter'; octx.globalAlpha = 0.10;
+      for (let gy = 0; gy < rows; gy += 2) {
+        for (let gx = 0; gx < cols; gx += 2) {
+          if (((gy + gx) & 1) !== gx0) continue;
+          const id = el[gy * cols + gx];
+          if (!id) continue;
+          const cls = CLSARR[id];
+          if (cls !== 2 && cls !== 3) continue;
+          const t = temp[gy * cols + gx];
+          if (t < 250) continue;
+          octx.fillStyle = `rgb(${Math.min(255, Math.round(250 + (t - 250) * 0.3))},${Math.min(255, Math.round(170 + (t - 250) * 0.05))},80)`;
+          octx.beginPath(); octx.arc(gx, gy, 1.1, 0, 7); octx.fill();
+        }
+      }
+      octx.restore();
+    }
     const ctx = cv.getContext('2d');
     /* P0 guard: never size the backing store from a 0/negative client size
        (mid-fullscreen-transition WebViews can report 0 for a frame) — that
@@ -1743,7 +1783,7 @@ export function MatterLab(props) {
     lsSet('omni:sandlab:neutral', neutralRef.current);
     toast('Calibrated — this pose is now neutral (gravity straight down)');
   };
-  const setGrav = (d) => { if (gyroOnRef.current) setGyroOn(false); setGravDir(d); gravDirRef.current = d; const e = engine(); if (e) { const V = [[0, 1], [0, -1], [-1, 0], [1, 0]][d & 3]; e.setGravityVector(V[0], V[1], 1); } };
+  const setGrav = (d) => { if (gyroOnRef.current) setGyroOn(false); setGravDir(d); gravDirRef.current = d; const e = engine(); if (e) { const V = [[0, 1], [0, -1], [-1, 0], [1, 0]][d & 3]; e.setGravityVector(V[0], V[1], 1); e.setGravityStrength(powerRef.current ? 4 : 1); } };
 
   /* ---------------- V2: launch modes (shell contract) ---------------- */
   useEffect(() => {
@@ -1786,6 +1826,8 @@ export function MatterLab(props) {
     window.__matterlab = {
       engine: e, SUBSTANCE_COUNT, NAMED_PAIR_COUNT, CARDS,
       gov: govRef.current, lastError: null,
+      /* Matter Lab Ultra: perf surface for the low-end pipeline */
+      perf: { deviceSummary: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, setCapParts: applyPerfCap },
       get tickRate() { return govRef.current.tickRate; }, get ladderStep() { return govRef.current.ladderStep; },
       get tierIndex() { return govRef.current.tierIndex; }, get startTierIndex() { return govRef.current.startTierIndex; },
       place: (key, x, y, r = 3) => e.paint(x, y, r, (BY_KEY.get(key) || {}).id || 0),
@@ -2037,7 +2079,7 @@ export function MatterLab(props) {
           </div>
         )}
         {/* expanded side panel: ALL tools + sim controls (never overlaps the bottom panel — mutual exclusion) */}
-        <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedI} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} />
+        <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedI} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} perf={{ device: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, applyCap: applyPerfCap }} power={powerOn} setPower={applyPower} />
       </div>
 
       {/* selected-substance bar (opens the bottom tile panel) — shown in
