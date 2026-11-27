@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import * as SandlabNS from './tools/sandlab.jsx';
 import { Toaster } from './ui/kit.jsx';
 import HomePage from './home/HomePage.jsx';
+import GlassShell from './ui/GlassShell.jsx';
 
 /* v2 shell: a real landing homepage is the default screen. Launching a mode
    stores the launch config (fresh nonce per launch) and shows the tool;
@@ -10,6 +11,7 @@ import HomePage from './home/HomePage.jsx';
 const MatterLab = SandlabNS.MatterLab;
 
 export default function App() {
+  const [glass, setGlass] = useState(false);
   const [screen, setScreen] = useState('home');
   const [launch, setLaunch] = useState(null);
 
@@ -32,6 +34,7 @@ export default function App() {
           </main>
         </div>
       )}
+      {glass && <GlassShell setGlass={setGlass} />}
       <Toaster />
     </div>
   );
