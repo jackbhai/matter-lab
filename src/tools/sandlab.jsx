@@ -13,6 +13,7 @@ import { GLRenderer, buildGLTables } from '../render/gl-renderer';
 import { Card, Empty, toast } from '../ui/kit';
 import TopBar from '../ui/TopBar.jsx';
 import { Dock, PickerStrip } from '../ui/Dock.jsx';
+import GlassShell from '../ui/GlassShell.jsx';
 import ToolWheel from '../ui/ToolWheel.jsx';
 import SettingsPanel from '../ui/Settings.jsx';
 import Picker from '../ui/Picker.jsx';
@@ -236,6 +237,8 @@ export function wsDebug(e, cv) {
 }
 
 export function MatterLab(props) {
+  const [glass, setGlass] = useState(false);
+  const [glass, setGlass] = useState(false); // Winzy-style right-side glass settings rail
   const launch = props && props.launch ? props.launch : undefined;
   const onHome = props && typeof props.onHome === 'function' ? props.onHome : null;
   const rootRef = useRef(null), boxRef = useRef(null), canvasRef = useRef(null);
@@ -2382,6 +2385,9 @@ export function MatterLab(props) {
           />
         );
       })()}
+      <GlassShell open={glass} setGlass={setGlass} />
+    </div>
+      <GlassShell open={glass} setGlass={setGlass} />
     </div>
   );
 }
