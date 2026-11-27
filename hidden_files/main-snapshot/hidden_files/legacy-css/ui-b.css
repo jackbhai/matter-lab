@@ -1,0 +1,40 @@
+/* ============================================================
+   Matter Lab UI-B (P4) — game-layer surfaces + accessibility.
+   Imported by sandlab.jsx AFTER ui-a.css in the cascade order of
+   the bundle, scoped to [data-mlroot] / .ml-home so nothing leaks.
+   ============================================================ */
+
+/* ---- font-size scaling (Settings: side panel → View → Text size) ----
+   Multiplies the app's small-text classes inside the lab. Base sizes:
+   .sm 12px, .btn.sm 12px, .chip ~11px, .seclabel 12px (theme.css). */
+[data-mlroot="1"][data-fs="s"]  { --ml-fsmul: 0.92; }
+[data-mlroot="1"][data-fs="m"]  { --ml-fsmul: 1; }
+[data-mlroot="1"][data-fs="l"]  { --ml-fsmul: 1.15; }
+[data-mlroot="1"][data-fs="xl"] { --ml-fsmul: 1.3; }
+[data-mlroot="1"] .sm       { font-size: calc(12px * var(--ml-fsmul, 1)); }
+[data-mlroot="1"] .btn.sm   { font-size: calc(12px * var(--ml-fsmul, 1)); }
+[data-mlroot="1"] .chip     { font-size: calc(11px * var(--ml-fsmul, 1)); }
+[data-mlroot="1"] .seclabel { font-size: calc(12px * var(--ml-fsmul, 1)); }
+[data-mlroot="1"] .ml-tb-btn span, [data-mlroot="1"] .ml-dock-tab span { font-size: calc(1em * var(--ml-fsmul, 1)); }
+
+/* home page honours the same stored scale */
+.ml-home[data-fs="s"]  { --ml-fsmul: 0.92; }
+.ml-home[data-fs="m"]  { --ml-fsmul: 1; }
+.ml-home[data-fs="l"]  { --ml-fsmul: 1.15; }
+.ml-home[data-fs="xl"] { --ml-fsmul: 1.3; }
+.ml-home .ml-exp-goal, .ml-home .ml-stat-label, .ml-home .ml-progress-line {
+  font-size: calc(12px * var(--ml-fsmul, 1));
+}
+
+/* ---- home progress line (Challenges card) ---- */
+.ml-progress { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.ml-progress-line { color: var(--fg2); font-size: 12px; line-height: 1.5; overflow-wrap: break-word; }
+.ml-progress-line b { color: var(--fg); }
+
+/* ---- achievement top toast never overlaps the TopBar stats on tiny screens ---- */
+[data-mlroot="1"] [data-achtoast="1"] { pointer-events: none; }
+
+/* ---- coach caption sits above the dock, never over the canvas centre ---- */
+@media (max-width: 480px) {
+  [data-coach="1"] .glass { bottom: calc(88px + var(--safe-b, 0px)) !important; }
+}

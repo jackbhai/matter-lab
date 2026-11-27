@@ -1,0 +1,145 @@
+/* Matter Lab modular CSS — generated in the UI-redesign wave from the
+   audited live rules only (see UI-REDESIGN-REPORT.md). Do not re-add
+   legacy OmniTools surfaces here. */
+[data-ml-shell] {
+  background:
+    radial-gradient(1100px 520px at 85% -10%, rgba(45, 212, 238, 0.10), transparent 60%),
+    radial-gradient(900px 480px at -10% 30%, rgba(52, 224, 176, 0.06), transparent 60%),
+    var(--bg);
+  color: var(--fg);
+  min-height: var(--ml-vh, 100dvh);
+}
+
+
+
+.ml-toolwrap { height: var(--ml-vh, 100dvh); display: flex; flex-direction: column; }
+
+
+.ml-toolwrap > main { flex: 1; min-height: 0; }
+
+
+
+[data-mlroot="1"] [data-sidepanel="1"] > div { flex-wrap: wrap; max-width: 100%; }
+
+
+[data-mlroot="1"] .sheet {
+  max-width: min(680px, 100vw);
+  max-height: 88dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+
+
+[data-mlroot="1"] .btn, [data-mlroot="1"] .chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  min-height: var(--ml-touch);
+}
+
+
+
+[data-mlroot="1"] button { min-height: var(--ml-touch); }
+
+
+[data-mlroot="1"] [data-rail] { min-height: var(--ml-touch); }
+
+
+
+
+[data-mlroot="1"] .ml-rail-btn {
+  width: 64px !important;
+  height: 58px !important;
+  border-radius: var(--ml-r-lg) !important;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+
+[data-mlroot="1"] .ml-rail-label { font-size: 8.5px; line-height: 1.1; font-weight: 600; letter-spacing: 0; white-space: nowrap; max-width: 100%; overflow: hidden; }
+
+
+@media (max-width: 430px) { .ml-tb-stats { display: none; } }
+
+
+
+
+.ml-stage {
+  min-height: 0; 
+  border-radius: var(--ml-r-lg);
+  background:
+    linear-gradient(180deg, transparent 0%, transparent 82%, rgba(122, 84, 46, .28) 82.2%, rgba(84, 56, 30, .55) 100%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.025) 0 46px, transparent 46px 92px),
+    radial-gradient(120% 90% at 50% 0%, rgba(120, 180, 200, .07), transparent 60%);
+}
+
+
+.ml-stage::after { 
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 14px;
+  border-radius: 0 0 var(--ml-r-lg) var(--ml-r-lg);
+  background: linear-gradient(180deg, rgba(196, 144, 84, .5), rgba(110, 74, 40, .65));
+  box-shadow: 0 -1px 0 rgba(255, 220, 170, .35);
+  pointer-events: none;
+}
+
+
+.ml-empty-hint {
+  position: absolute; left: calc(50% + 30px); top: 14px; transform: translateX(-50%);
+  z-index: 120; pointer-events: none; text-align: center;
+  max-width: min(320px, calc(100% - 96px));
+  background: var(--ml-glass); border: 1px dashed var(--ml-c-line-2);
+  color: var(--ml-c-fg); border-radius: var(--ml-r-md);
+  padding: var(--ml-sp-2) var(--ml-sp-3); font-size: var(--ml-fs-sm); line-height: 1.45;
+  box-shadow: var(--ml-shadow-sm);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+
+
+
+
+.ml-pour {
+  position: absolute; top: 10px; left: 50%; width: 10px; height: 26px; z-index: 125;
+  transform: translateX(-50%); pointer-events: none;
+  border-radius: 0 0 8px 8px;
+  background: linear-gradient(180deg, rgba(140, 210, 245, .0), rgba(140, 210, 245, .85));
+  animation: ml-pour-drop .8s var(--ml-ease) 1;
+}
+
+
+@keyframes ml-pour-drop {
+  0% { opacity: 0; transform: translate(-50%, -6px) scaleY(.4); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, 44px) scaleY(1.15); }
+}
+
+
+
+
+[data-mlroot="1"] .sheet[data-infocard="1"] {
+  background-color: #0a1821;
+  background-image: linear-gradient(rgba(17, 34, 44, 0.97), rgba(17, 34, 44, 0.97));
+}
+
+
+
+
+@media (prefers-reduced-motion: reduce) {
+  .ml-pour { animation: none; display: none; }
+  .ml-ticker-track { animation: none !important; }
+  [data-mlroot="1"] * { transition-duration: .01ms !important; }
+}
+
+
+
+
+@media (min-width: 700px) {
+  .ml-dock-tab { min-height: 56px; font-size: var(--ml-fs-sm); }
+  .ml-wheel { bottom: 60px; }
+}
+/* redesign fixes: centre the empty hint (rail retired) */
+.ml-empty-hint { left: 50%; }

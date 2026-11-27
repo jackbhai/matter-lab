@@ -1,0 +1,638 @@
+/**
+ * sfx.js — the small sounds the travel panels make.
+ *
+ * Every one of them is synthesised here with Web Audio. There is no audio file,
+ * no fetch, no cache entry and no permission: a "train passing" is one band
+ * swept up to 1.6 kHz and back down over 1.15 s, plus a 52 → 34 Hz sine for the
+ * rails, panned hard left to hard right. The whole layer costs more comment
+ * than code and cannot break offline use, because it never touches the network.
+ *
+ * Why it exists: two of the answers these tools give are things a person should
+ * hear without looking at the screen — a place has been picked (so the list can
+ * be read from the corner of an eye), and a get-off alert has fired (a phone in
+ * a pocket does not show a notification, but it does make a noise).
+ *
+ * Rules this module keeps:
+ *   · `play()` never throws and never lies. It returns `{ ok, why }`, and the
+ *     last dozen decisions are kept in a ring buffer the UI prints under
+ *     `how it knows` — so "silent" is always explained (off, hidden tab, no Web
+ *     Audio, or the same sound 40 ms ago).
+ *   · Autoplay policy is respected by construction: the context is created on
+ *     the first call, which is always inside a tap handler, and `resume()` is
+ *     attempted when the state is not `running`.
+ *   · Nothing plays twice within a sound's own `minMs`, so a fast thumb on the
+ *     departure chips does not machine-gun.
+ *   · Two graphs share one code path with the tests: `build(ctx, dest, t)` is
+ *     given an AudioContext and a destination, and the browser suite renders
+ *     the very same function through an OfflineAudioContext to measure the
+ *     samples (peak, length, where the energy sits). A sound that is only
+ *     "scheduled" but silent fails the gate.
+ */
+
+import { getSettings, setSetting, onSettings } from './settings.js';
+
+/** W31 item 4.2 — mastered ceiling: the master bus never exceeds
+ * −18 dBFS (≈0.126 linear), however many voices stack; the limiter
+ * threshold sits at the same line as a belt. While media is audible
+ * the bus ducks to ×0.4 (setMediaAudible, set by the player). */
+export const MASTER_CEILING = 0.126;   // −18 dBFS equivalent
+export const MASTER = MASTER_CEILING;
+export const DUCK_FACTOR = 0.4;
+let mediaAudible = false;
+export function setMediaAudible(on) {
+  mediaAudible = !!on;
+  if (master && ctx) {
+    try { master.gain.setTargetAtTime(MASTER * (mediaAudible ? DUCK_FACTOR : 1), ctx.currentTime, 0.08); } catch {}
+  }
+}
+export function isMediaAudible() { return mediaAudible; }
+
+const NOTE = { C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99, A5: 880, C6: 1046.5,
+  E6: 1318.5, G6: 1568, C7: 2093 };
+
+/* ---------------------------------------------------------------- builders */
+
+const NOISE_S = 2.4;
+let noiseCache = null;
+
+/** One shared pink-ish noise buffer per sample rate — generated once, ~0.6 ms. */
+function noise(ctx) {
+  if (noiseCache && noiseCache.rate === ctx.sampleRate) return noiseCache.buf;
+  const n = Math.max(1, Math.floor(NOISE_S * ctx.sampleRate));
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < n; i++) {
+    const w = Math.random() * 2 - 1;
+    last = (last + 0.06 * w) / 1.06;          // a leaky integrator: no fizz, no hum
+    d[i] = Math.max(-1, Math.min(1, last * 3.2));
+  }
+  noiseCache = { rate: ctx.sampleRate, buf };
+  return buf;
+}
+
+/**
+ * One enveloped oscillator. Every ramp is exponential and never touches zero,
+ * which is what Web Audio asks for and also what a bell does.
+ */
+function tone(ctx, dest, o) {
+  const { type = 'sine', f, to = null, t = 0, dur = 0.3, peak = 0.2,
+    attack = 0.008, detune = 0 } = o;
+  const osc = ctx.createOscillator();
+  osc.type = type;
+  osc.frequency.setValueAtTime(Math.max(10, f), t);
+  if (to) osc.frequency.exponentialRampToValueAtTime(Math.max(10, to), t + dur);
+  if (detune) osc.detune.setValueAtTime(detune, t);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(g).connect(dest);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+  return osc;
+}
+
+/** The noise engine behind a passing train, a door hiss and a brake. */
+function swept(ctx, dest, o) {
+  const { t = 0, dur = 1, peak = 0.3, type = 'bandpass', f = 240, f1 = 1600, f2 = 210,
+    q = 1.15, pan = null, src = null } = o;
+  const node = src || (() => {
+    const s = ctx.createBufferSource();
+    s.buffer = noise(ctx);
+    s.start(t);
+    s.stop(t + dur + 0.02);
+    return s;
+  })();
+  const bp = ctx.createBiquadFilter();
+  bp.type = type;
+  bp.Q.setValueAtTime(q, t);
+  bp.frequency.setValueAtTime(Math.max(20, f), t);
+  bp.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur * 0.34);
+  bp.frequency.exponentialRampToValueAtTime(Math.max(30, f2), t + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + dur * 0.26);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  node.connect(bp).connect(g);
+  let tail = g;
+  if (pan && typeof ctx.createStereoPanner === 'function') {
+    const p = ctx.createStereoPanner();
+    p.pan.setValueAtTime(pan[0], t);
+    p.pan.linearRampToValueAtTime(pan[1], t + dur);
+    g.connect(p);
+    tail = p;
+  }
+  tail.connect(dest);
+  return node;
+}
+
+/* ------------------------------------------------------------------ sounds */
+
+/**
+ * Two families: the travel sounds the panels ask for by name, and the soft
+ * UI family the whole app shares. Each entry says what it means on screen.
+ * `dur` is the length the graph
+ * occupies, `minMs` the anti-repeat window, `whileHidden` whether the tab being
+ * in the background may silence it — an alert never may, a button press should.
+ */
+export const SOUNDS = {
+  whoosh: {
+    label: 'A train going past', when: 'you pick a place in a search box',
+    dur: 1.25, minMs: 220,
+    build(ctx, dest, t) {
+      swept(ctx, dest, { t, dur: 1.15, peak: 0.34, f: 240, f1: 1600, f2: 205,
+        q: 1.15, pan: [-0.95, 0.95] });
+      tone(ctx, dest, { f: 52, to: 34, t: t + 0.02, dur: 1.0, peak: 0.26 });
+      tone(ctx, dest, { type: 'triangle', f: 180, to: 92, t: t + 0.1, dur: 0.5, peak: 0.05 });
+    },
+  },
+  back: {
+    label: 'Air going the other way', when: 'you leave a tool',
+    dur: 0.8, minMs: 260,
+    build(ctx, dest, t) {
+      swept(ctx, dest, { t, dur: 0.7, peak: 0.28, f: 1500, f1: 265, f2: 175, q: 1.3, pan: [0.9, -0.7] });
+      tone(ctx, dest, { f: 40, to: 58, t: t + 0.04, dur: 0.5, peak: 0.18 });
+    },
+  },
+  ding: {
+    label: 'One station bell', when: 'an alert you asked for has been armed',
+    dur: 0.55, minMs: 140,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: NOTE.C6, t, dur: 0.42, peak: 0.19 });
+      tone(ctx, dest, { f: NOTE.G6, t: t + 0.006, dur: 0.3, peak: 0.09, detune: 4 });
+    },
+  },
+  alight: {
+    label: 'Get off now — three bells', when: 'a get-off alert fires',
+    dur: 1.15, minMs: 60, whileHidden: true,
+    build(ctx, dest, t) {
+      for (let i = 0; i < 3; i++) {
+        const at = t + i * 0.26;
+        tone(ctx, dest, { f: NOTE.C6, t: at, dur: 0.24, peak: 0.24 });
+        tone(ctx, dest, { f: NOTE.E6, t: at + 0.004, dur: 0.2, peak: 0.13 });
+      }
+      tone(ctx, dest, { f: 66, to: 48, t: t + 0.02, dur: 0.9, peak: 0.16 });
+    },
+  },
+  brake: {
+    label: 'Air brake — that will not work', when: 'a plan the timetable cannot support',
+    dur: 0.95, minMs: 260,
+    build(ctx, dest, t) {
+      swept(ctx, dest, { t, dur: 0.8, peak: 0.3, type: 'highpass', f: 2400, f1: 2600,
+        f2: 620, q: 0.7 });
+      tone(ctx, dest, { type: 'sawtooth', f: 240, to: 70, t: t + 0.02, dur: 0.55, peak: 0.09 });
+      tone(ctx, dest, { f: 90, to: 55, t: t + 0.3, dur: 0.45, peak: 0.12 });
+    },
+  },
+  tick: {
+    label: 'A key press', when: 'an option, a sort, a departure chip',
+    dur: 0.1, minMs: 45,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { type: 'triangle', f: 1400, to: 920, t, dur: 0.045, peak: 0.06 });
+    },
+  },
+  chime: {
+    label: 'Four ascending bells — here it is', when: 'a journey has been worked out',
+    dur: 0.85, minMs: 300,
+    build(ctx, dest, t) {
+      [NOTE.C6, NOTE.E6, NOTE.G6, NOTE.C7].forEach((f, i) =>
+        tone(ctx, dest, { f, t: t + i * 0.09, dur: 0.34, peak: i === 3 ? 0.2 : 0.15 }));
+    },
+  },
+
+  /* ------------------------------------------------------ the UI family
+     The premium set: soft, rounded, quiet. Nothing here is a beep — every
+     sound is a sine or triangle with a slow-enough attack that it lands
+     like a fingertip, not a buzzer, and peaks stay low because the master
+     bus is shared with the travel family above. 60–350 ms each. */
+
+  pop: {
+    label: 'A soft tap', when: 'a button, chip, row or nav item is pressed',
+    dur: 0.08, minMs: 45,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: 640, to: 360, t, dur: 0.07, peak: 0.1, attack: 0.004 });
+      tone(ctx, dest, { type: 'triangle', f: 1280, t, dur: 0.03, peak: 0.02 });
+    },
+  },
+  toggleon: {
+    label: 'A switch turning on', when: 'a setting or switch flips on',
+    dur: 0.18, minMs: 60,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: NOTE.E5, t, dur: 0.09, peak: 0.07 });
+      tone(ctx, dest, { f: NOTE.A5, t: t + 0.055, dur: 0.11, peak: 0.08 });
+    },
+  },
+  toggleoff: {
+    label: 'A switch turning off', when: 'a setting or switch flips off',
+    dur: 0.18, minMs: 60,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: NOTE.A5, t, dur: 0.08, peak: 0.07 });
+      tone(ctx, dest, { f: NOTE.E5, t: t + 0.05, dur: 0.1, peak: 0.06 });
+    },
+  },
+  open: {
+    label: 'A panel opening', when: 'a tool or a section opens',
+    dur: 0.18, minMs: 90,
+    build(ctx, dest, t) {
+      swept(ctx, dest, { t, dur: 0.16, peak: 0.05, f: 480, f1: 1500, f2: 1100, q: 1.1 });
+      tone(ctx, dest, { f: 300, to: 520, t, dur: 0.14, peak: 0.02 });
+    },
+  },
+  close: {
+    label: 'A panel closing', when: 'a section folds shut',
+    dur: 0.16, minMs: 90,
+    build(ctx, dest, t) {
+      swept(ctx, dest, { t, dur: 0.14, peak: 0.045, f: 1500, f1: 480, f2: 420, q: 1.1 });
+      tone(ctx, dest, { f: 520, to: 300, t, dur: 0.12, peak: 0.018 });
+    },
+  },
+  success: {
+    label: 'Two warm notes — done', when: 'something saved, finished or was added',
+    dur: 0.45, minMs: 150,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: NOTE.G5, t, dur: 0.3, peak: 0.09, attack: 0.006 });
+      tone(ctx, dest, { f: NOTE.C6, t: t + 0.09, dur: 0.34, peak: 0.1, attack: 0.006 });
+      tone(ctx, dest, { f: NOTE.E6, t: t + 0.09, dur: 0.2, peak: 0.03 });
+    },
+  },
+  error: {
+    label: 'A low soft thud', when: 'something could not be done',
+    dur: 0.22, minMs: 200,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: 150, to: 68, t, dur: 0.2, peak: 0.14, attack: 0.005 });
+      swept(ctx, dest, { t, dur: 0.16, peak: 0.05, type: 'lowpass', f: 420, f1: 300, f2: 140, q: 0.7 });
+    },
+  },
+  play: {
+    label: 'Playback starting', when: 'you press play',
+    dur: 0.1, minMs: 80,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: 540, to: 820, t, dur: 0.09, peak: 0.07 });
+      tone(ctx, dest, { f: 1080, to: 1640, t, dur: 0.06, peak: 0.02 });
+    },
+  },
+  pause: {
+    label: 'Playback pausing', when: 'you press pause',
+    dur: 0.1, minMs: 80,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: 820, to: 540, t, dur: 0.09, peak: 0.06 });
+    },
+  },
+  add: {
+    label: 'A bright pluck — kept', when: 'a favourite, pin or like is added',
+    dur: 0.18, minMs: 80,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { type: 'triangle', f: NOTE.A5, t, dur: 0.07, peak: 0.08 });
+      tone(ctx, dest, { f: NOTE.E6, t: t + 0.05, dur: 0.12, peak: 0.07 });
+    },
+  },
+  remove: {
+    label: 'One note stepping down', when: 'a favourite, pin or saved copy is removed',
+    dur: 0.12, minMs: 80,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { type: 'triangle', f: 660, to: 440, t, dur: 0.11, peak: 0.06 });
+    },
+  },
+  copy: {
+    label: 'Two tiny pips', when: 'text or a link is copied',
+    dur: 0.1, minMs: 80,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: 1250, t, dur: 0.03, peak: 0.05 });
+      tone(ctx, dest, { f: 1250, t: t + 0.05, dur: 0.03, peak: 0.05 });
+    },
+  },
+  fetch: {
+    label: 'A gentle dip — fetching', when: 'a download starts',
+    dur: 0.17, minMs: 150,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: 920, to: 480, t, dur: 0.15, peak: 0.07 });
+      tone(ctx, dest, { f: 460, t: t + 0.02, dur: 0.1, peak: 0.03 });
+    },
+  },
+  timer: {
+    label: 'One soft bell', when: 'a sleep timer is set',
+    dur: 0.4, minMs: 150,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: NOTE.A5, t, dur: 0.38, peak: 0.07, attack: 0.005 });
+      tone(ctx, dest, { f: NOTE.E6, t: t + 0.004, dur: 0.3, peak: 0.025 });
+    },
+  },
+
+  /* ------------------------------------------- W31 item 4.1 wardrobe
+     The rest of the named set (§5.5 triples). Same soft character —
+     sine/triangle partials, fast decay, no square waves. Every entry
+     ≤120 ms except celebration (≤600 ms arpeggio). */
+  tap: {
+    label: 'The softest tap', when: 'a tap or navigation press (§5.5)',
+    dur: 0.06, minMs: 40,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { type: 'triangle', f: 880, to: 620, t, dur: 0.05, peak: 0.045, attack: 0.003 });
+    },
+  },
+  pin: {
+    label: 'A pin going in', when: 'a tool or item is pinned',
+    dur: 0.12, minMs: 80,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { type: 'triangle', f: NOTE.A5, t, dur: 0.06, peak: 0.07 });
+      tone(ctx, dest, { f: NOTE.C6, t: t + 0.045, dur: 0.07, peak: 0.06 });
+    },
+  },
+  unpin: {
+    label: 'A pin coming out', when: 'a tool or item is unpinned',
+    dur: 0.12, minMs: 80,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { type: 'triangle', f: NOTE.C6, t, dur: 0.05, peak: 0.06 });
+      tone(ctx, dest, { f: NOTE.A5, t: t + 0.04, dur: 0.07, peak: 0.05 });
+    },
+  },
+  swipe: {
+    label: 'A short air swipe', when: 'a swipe or drag gesture lands',
+    dur: 0.11, minMs: 70,
+    build(ctx, dest, t) {
+      swept(ctx, dest, { t, dur: 0.1, peak: 0.04, f: 700, f1: 1800, f2: 1300, q: 1.1 });
+    },
+  },
+  refresh: {
+    label: 'Pull, release, renewed', when: 'a pull-to-refresh releases',
+    dur: 0.12, minMs: 120,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { f: 520, to: 940, t, dur: 0.1, peak: 0.05, attack: 0.004 });
+      tone(ctx, dest, { type: 'triangle', f: 1880, t: t + 0.02, dur: 0.05, peak: 0.015 });
+    },
+  },
+  celebration: {
+    label: 'A tiny arpeggio — well done', when: 'a milestone or streak lands',
+    dur: 0.58, minMs: 400,
+    build(ctx, dest, t) {
+      [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6].forEach((f, i) =>
+        tone(ctx, dest, { f, t: t + i * 0.085, dur: 0.3, peak: i === 3 ? 0.1 : 0.08, attack: 0.005 }));
+      tone(ctx, dest, { f: NOTE.E6, t: t + 0.34, dur: 0.22, peak: 0.03 });
+    },
+  },
+  'ai-tick': {
+    label: 'Near-silent thinking tick', when: 'Omni AI is working',
+    dur: 0.04, minMs: 90,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { type: 'triangle', f: 1560, t, dur: 0.03, peak: 0.012, attack: 0.002 });
+    },
+  },
+  'game-click': {
+    label: 'A neutral game-UI click', when: 'hub chrome inside a game tool',
+    dur: 0.07, minMs: 45,
+    build(ctx, dest, t) {
+      tone(ctx, dest, { type: 'triangle', f: 1180, to: 840, t, dur: 0.055, peak: 0.055, attack: 0.003 });
+    },
+  },
+};
+
+/* Hyphenated spellings of the toggle pair (item 4.1 names) — the same
+   graphs as toggleon/toggleoff, so both spellings keep working. */
+SOUNDS['toggle-on'] = SOUNDS.toggleon;
+SOUNDS['toggle-off'] = SOUNDS.toggleoff;
+
+export const SOUND_NAMES = Object.keys(SOUNDS);
+
+/* --------------------------------------------------------------- plumbing */
+
+let ctx = null;
+let master = null;
+let limiter = null;
+let failed = '';
+const lastAt = new Map();
+const RING = [];
+
+function context() {
+  const AC = typeof AudioContext !== 'undefined' ? AudioContext
+    : (typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null);
+  if (!AC) { failed = 'this browser has no Web Audio'; return null; }
+  if (!ctx) {
+    try {
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = MASTER * (mediaAudible ? DUCK_FACTOR : 1);
+      if (typeof ctx.createDynamicsCompressor === 'function') {
+        limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -18;
+        limiter.knee.value = 6;
+        limiter.ratio.value = 9;
+        limiter.attack.value = 0.004;
+        limiter.release.value = 0.12;
+        master.connect(limiter).connect(ctx.destination);
+      } else {
+        master.connect(ctx.destination);
+      }
+    } catch (e) {
+      failed = 'audio graph refused: ' + (e && e.message ? e.message : e);
+      ctx = null;
+      return null;
+    }
+  }
+  // A tap is what unlocks the context; a suspended one still schedules, so the
+  // only thing resume() can buy is the sound actually starting.
+  if (typeof ctx.resume === 'function' && ctx.state !== 'running') {
+    try { ctx.resume().catch(() => {}); } catch {}
+  }
+  return ctx;
+}
+
+export function supported() {
+  return typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined';
+}
+
+export function enabled() {
+  try { return getSettings().sfx !== false; } catch { return true; }
+}
+
+export function setEnabled(on) {
+  setSetting('sfx', !!on);
+  return !!on;
+}
+
+/** Last dozen decisions, so a silent panel can say which of six reasons it was. */
+export function soundLog() { return RING.slice(); }
+
+function note(name, res) {
+  RING.push({ name, ok: !!res.ok, why: res.why || '', at: Math.round(
+    typeof performance !== 'undefined' ? performance.now() : 0) });
+  if (RING.length > 12) RING.shift();
+  return res;
+}
+
+/**
+ * Play `name`. Safe from anywhere, including a render pass: it answers why it
+ * did nothing rather than throwing at a component that only wanted a click.
+ */
+export function play(name, { delay = 0 } = {}) {
+  const rec = SOUNDS[name];
+  const res = { name: String(name || ''), ok: false, why: '' };
+  if (!rec) return note(name, { ...res, why: 'no such sound' });
+  if (!enabled()) return note(name, { ...res, why: 'sounds are off' });
+  if (typeof document !== 'undefined' && document.hidden && !rec.whileHidden) {
+    return note(name, { ...res, why: 'this tab is in the background' });
+  }
+  /* W31 4.7 silence rule: no UI sounds while the Voice Recorder is capturing
+     (it sets data-recording="1" on <html> for exactly this check). */
+  if (typeof document !== 'undefined' && document.documentElement?.dataset?.recording === '1') {
+    return note(name, { ...res, why: 'recording in progress' });
+  }
+  const now = typeof performance !== 'undefined' ? performance.now() : 0;
+  const prev = lastAt.get(name);
+  if (prev != null && now - prev < rec.minMs) return note(name, { ...res, why: 'too soon' });
+  const c = context();
+  if (!c) return note(name, { ...res, why: failed || 'no audio context yet' });
+  try {
+    rec.build(c, master, c.currentTime + Math.max(0, delay));
+    lastAt.set(name, now);
+    return note(name, { ...res, ok: true, dur: rec.dur });
+  } catch (e) {
+    return note(name, { ...res, why: 'graph failed: ' + (e && e.message ? e.message : e) });
+  }
+}
+
+/* ------------------------------------------------- the interaction layer */
+
+/**
+ * What a press sounds like, app-wide. Read top to bottom, first match wins, and
+ * `null` means "stay quiet" — an element can opt out with data-sfx="none".
+ *
+ * One listener on the document instead of a call in every tool: 40+ tools cannot
+ * be remembered one by one, and a delegated rule covers the buttons that get
+ * written next month. The panel-level calls stay useful — they fire on the same
+ * gesture and the anti-repeat window in play() turns the second one away, so a
+ * deliberate sound (a chime for an answer, a bell for an alert) still wins.
+ */
+const PRESS_SOUNDS = [
+  ['[data-sfx="none"]', null],
+  ['.sndrow', null],
+  ['.tile', 'open'],
+  ['.catcard', 'open'],
+  ['button[aria-label="Back"]', 'back'],
+  ['.nav button', 'pop'],
+  ['.btn', 'pop'],
+  ['.cat', 'pop'],
+  ['.chip', 'pop'],
+  ['.tabs button', 'pop'],
+  ['.iconbtn', 'pop'],
+  ['.row', 'pop'],
+];
+
+let ATTACHED = null;
+
+/** Start the app-wide layer. Returns the function that stops it again. */
+export function attach(root) {
+  if (typeof window === 'undefined') return () => {};
+  if (ATTACHED) return ATTACHED.off;
+  const host = (root && root.addEventListener ? root : document);
+  const soundFor = (el) => {
+    for (const [sel, name] of PRESS_SOUNDS) {
+      if (el.closest(sel)) return name;
+    }
+    return undefined;
+  };
+  const fire = (ev, key) => {
+    if (!enabled()) return;
+    const el = ev.target && ev.target.closest ? ev.target : null;
+    if (!el) return;
+    if (!key) {
+      if (ev.button != null && ev.button !== 0) return;     // a right-click is not a press
+      if (ev.pointerType === 'pen' && ev.isPrimary === false) return;
+    }
+    const name = soundFor(el);
+    if (name === undefined) return;
+    if (name) play(name);
+  };
+  const onDown = (ev) => fire(ev, false);
+  const onKey = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') fire(ev, true); };
+  /* Switches speak on `change`, not on press: only the change event knows
+     which way the switch landed, and deferring one tick lets the setting
+     itself land first — flipping sound OFF must answer with silence, and
+     flipping it ON with the on-notes, never the other way round. */
+  const onChange = (ev) => {
+    const el = ev.target;
+    if (!el || !el.matches) return;
+    if (el.matches('input[type="checkbox"], input[type="radio"]')) {
+      const on = !!el.checked;
+      setTimeout(() => { if (enabled()) play(on ? 'toggleon' : 'toggleoff'); }, 0);
+    } else if (el.tagName === 'SELECT') {
+      play('pop');
+    }
+  };
+  host.addEventListener('pointerdown', onDown, true);
+  host.addEventListener('keydown', onKey, true);
+  host.addEventListener('change', onChange, true);
+  const off = () => {
+    host.removeEventListener('pointerdown', onDown, true);
+    host.removeEventListener('keydown', onKey, true);
+    host.removeEventListener('change', onChange, true);
+    ATTACHED = null;
+  };
+  ATTACHED = { off, host };
+  return off;
+}
+
+/** Is the layer listening? The start shell says yes from its first paint. */
+export function attached() { return !!ATTACHED; }
+
+/** The setting can be changed from the Settings page; honour it live. */
+if (typeof window !== 'undefined') {
+  try {
+    onSettings((s) => {
+      if (s && s.sfx === false && master) {
+        lastAt.clear();          // turning sound off clears the anti-repeat
+      }
+    });
+  } catch {}
+}
+
+/* ------------------------------------------------- W31 item 4.3: feel
+   The haptic vocabulary — the ONLY navigator.vibrate caller for shell
+   and shared components (tool-internal alert/game vibration keeps its
+   own layer, per spec §5.5). Honest ceiling: this is timing patterns
+   on a single-motor buzzer (Android) and a no-op where unsupported
+   (iOS Safari, desktop). §5.5 rule: vibration never fires when sounds
+   are muted AND reduced motion is on. */
+function motionReduced() {
+  try {
+    if (typeof document !== 'undefined' && document.documentElement?.dataset?.motion === 'reduced') return true;
+    return typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch { return false; }
+}
+function buzz(pattern) {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.vibrate) return false;
+    if (!enabled() && motionReduced()) return false;
+    navigator.vibrate(pattern);
+    return true;
+  } catch { return false; }
+}
+export const feel = {
+  nudge: () => buzz(6),                    // toggle landed, light touch
+  confirm: () => buzz(12),                 // success: copy, save, pin
+  celebrate: () => buzz([12, 40, 12]),     // milestone pattern
+  error: () => buzz([20, 40, 20]),         // 2×20ms with a gap
+  dragTick: () => buzz(3),                 // reorder snap points
+  pullThreshold: () => buzz(8),            // pull-to-refresh release point
+};
+export const haptics = feel;
+
+/* ------------------------------------------------- P3: sim haptic vocabulary
+   tap / blast / pop / success for the simulation surface. Unlike `feel`
+   (shell chrome, gated on muted+reduced-motion), this vocabulary is tied
+   DIRECTLY to the existing sound toggle: sounds off (enabled() === false)
+   means no vibration, no new settings surface. No-op where
+   navigator.vibrate is unsupported (iOS Safari, desktop). */
+function buzzFx(pattern) {
+  try {
+    if (!enabled()) return false; // tied to the existing sound toggle
+    if (typeof navigator === 'undefined' || !navigator.vibrate) return false;
+    navigator.vibrate(pattern);
+    return true;
+  } catch { return false; }
+}
+export const hapticFx = {
+  tap: () => buzzFx(8),                          // light UI / tool tap
+  blast: () => buzzFx([35, 40, 70]),             // explosion: heavy double-thump
+  pop: () => buzzFx(18),                         // lid pop / pressure release: single snap
+  success: () => buzzFx([10, 40, 16]),           // success: short-rising pair
+};

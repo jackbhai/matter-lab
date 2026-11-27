@@ -1,0 +1,168 @@
+HIT PROBE {
+ "beaker-m": {
+  "hitCoverage": "110/1551 cells (7%)",
+  "centre": {
+   "hit": false,
+   "px": {
+    "x": 205,
+    "y": 776
+   },
+   "cell": [
+    120,
+    519
+   ]
+  },
+  "leftWallMid": {
+   "hit": true,
+   "px": {
+    "x": 173,
+    "y": 776
+   },
+   "cell": [
+    97,
+    519
+   ]
+  },
+  "rightWallMid": {
+   "hit": true,
+   "px": {
+    "x": 236,
+    "y": 776
+   },
+   "cell": [
+    143,
+    519
+   ]
+  },
+  "bottomLeft": {
+   "hit": true,
+   "px": {
+    "x": 173,
+    "y": 798
+   },
+   "cell": [
+    97,
+    535
+   ]
+  },
+  "bottomCentre": {
+   "hit": true,
+   "px": {
+    "x": 205,
+    "y": 798
+   },
+   "cell": [
+    120,
+    535
+   ]
+  },
+  "topLeftRim": {
+   "hit": true,
+   "px": {
+    "x": 173,
+    "y": 754
+   },
+   "cell": [
+    97,
+    503
+   ]
+  },
+  "topCentre": {
+   "hit": false,
+   "px": {
+    "x": 205,
+    "y": 754
+   },
+   "cell": [
+    120,
+    503
+   ]
+  }
+ },
+ "burner": {
+  "hitCoverage": "32/240 cells (13%)",
+  "centre": {
+   "hit": true,
+   "px": {
+    "x": 250,
+    "y": 789
+   },
+   "cell": [
+    153,
+    528
+   ]
+  },
+  "leftWallMid": {
+   "hit": true,
+   "px": {
+    "x": 239,
+    "y": 789
+   },
+   "cell": [
+    145,
+    528
+   ]
+  },
+  "rightWallMid": {
+   "hit": true,
+   "px": {
+    "x": 260,
+    "y": 789
+   },
+   "cell": [
+    160,
+    528
+   ]
+  },
+  "bottomLeft": {
+   "hit": true,
+   "px": {
+    "x": 239,
+    "y": 798
+   },
+   "cell": [
+    145,
+    535
+   ]
+  },
+  "bottomCentre": {
+   "hit": true,
+   "px": {
+    "x": 250,
+    "y": 798
+   },
+   "cell": [
+    153,
+    535
+   ]
+  },
+  "topLeftRim": {
+   "hit": false,
+   "px": {
+    "x": 239,
+    "y": 779
+   },
+   "cell": [
+    145,
+    521
+   ]
+  },
+  "topCentre": {
+   "hit": false,
+   "px": {
+    "x": 250,
+    "y": 779
+   },
+   "cell": [
+    153,
+    521
+   ]
+  }
+ }
+}
+grab spot chosen: bottomCentre
+drag from hit cell: {"grabName":"bottomCentre","fromCx":205,"toCx":146,"movedPx":59,"toast":null}
+tap from burner hit cell: {"tapName":"bottomCentre","lvlBefore":2,"lvlAfter":3}
+SODIUM-IN-POOL result {"badge":"Menu — 9 new reaction messages","steam":0,"hydrogen":302,"water":1603,"sodiumHydroxide":241,"fire":0}
+FEED paragraphs ["Sodium Hydroxide Solution + Sodium → metal + strong alkali → salt + H2↑","on contact · wetting \\u00b7 tier 1 \\u00b7 12:35:42 AM — Sodium Hydroxide Solution + Sodium → Amphoteric Dissolve — A few metals (aluminium, zinc, tin, lead) dissolve in strong alkali as well as acid. · metal + strong alkali → salt + H2↑","Hydrogen + Water → gas + water ⇄ dissolved gas","on contact · gas-aqueous \\u00b7 tier 1 \\u00b7 12:35:42 AM — Hydrogen Dissolves in Water — The gas dissolves into the liquid — pressure and stirring speed it up. · gas + water ⇄ dissolved gas","Sodium Hydroxide Solution + Sodium → metal + strong alkali → salt + H2↑","on contact · wetting \\u00b7 tier 1 \\u00b7 12:35:40 AM — Sodium Hydroxide Solution + Sodium → Amphoteric Dissolve — A few metals (aluminium, zinc, tin, lead) dissolve in strong alkali as well as acid. · metal + strong alkali → salt + H2↑","Sodium + Water → Sodium Hydroxide Solution + Hydrogen","on contact \\u00b7 tier 1 \\u00b7 12:35:40 AM — Sodium + Water — Sodium rips oxygen from water so eagerly that the hydrogen released can catch fire. · 2Na + 2H2O → 2NaOH + H2↑","Hydrogen + Water → gas + water ⇄ dissolved gas","on contact · gas-aqueous \\u00b7 tier 1 \\u00b7 12:35:39 AM — Hydrogen Dissolves in Water — The gas dissolves into the liquid — pressure and stirring speed it up. · gas + water ⇄ dissolved gas","Sodium + Sodium Hydroxide Solution → metal + strong alkali → salt + H2↑","on contact · wetting \\u00b7 tier 1 \\u00b7 12:35:38 AM — Sodium + Sodium Hydroxide Solution → Amphoteric Dissolve — A few metals (aluminium, zinc, tin, lead) dissolve in strong alkali as well as acid. · metal + strong alkali → salt + H2↑"]
+PROBE3 DONE

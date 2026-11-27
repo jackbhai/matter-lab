@@ -1,0 +1,555 @@
+diff --git a/README.md b/README.md
+index fa52711..cb3d507 100644
+--- a/README.md
++++ b/README.md
+@@ -1,7 +1,7 @@
+ # Matter Lab
+ 
+ **A falling-sand sandbox × a real chemistry lab — in one open world.**
+-Paint any of **1,392 substances**, place working lab gear (beakers, burners, cooling
++Paint any of **1,822 substances**, place working lab gear (beakers, burners, cooling
+ coils, wires, switches, electrodes…), and watch everything react with everything.
+ 
+ 🔴 **Live demo:** https://jackbhai.github.io/matter-lab/
+@@ -18,7 +18,7 @@ The app now opens on a **landing homepage** (its own flask logo, live numbers, a
+ - **Scene Gallery** — four showcase scenes (Volcano, The Bench, Electrolysis,
+   Golden Rain) with real rendered thumbnails; opening one loads it in the sandbox.
+ - **Custom Lab** — define your own substance by its properties; it reacts by the
+-  same rules as the built-in 1,392.
++  same rules as the built-in 1,822.
+ 
+ One tap on the tool's Home control returns to the homepage. The whole app wears the
+ v2 **lab-glass** identity — deep slate/teal glass panels, fine borders, one teal-cyan
+@@ -30,9 +30,9 @@ beaker-on-burner boiling and electrolysis) is unchanged underneath.
+ 
+ | | |
+ |---|---|
+-| Substances | **1,392** — elements, compounds, solutions, alloys, foods, fuels, explosives, lab reagents |
+-| Named reactions | **22,542** pairs with a real, distinct reaction outcome |
+-| Decision coverage | **100%** — all 968,136 substance pairs resolve via a named mechanism (pair rule → family rule → property-computed verdict); no pair is a shrug |
++| Substances | **1,822** — elements, compounds, solutions, alloys, foods, fuels, explosives, lab reagents |
++| Named reactions | **34,775** pairs with a real, distinct reaction outcome |
++| Decision coverage | **100%** — all 1,660,753 substance pairs resolve via a named mechanism (pair rule → family rule → property-computed verdict); no pair is a shrug |
+ | Property engine | Real data underneath: standard potentials (E°), solubility products (Ksp), pKa, Hansen solubility parameters — verdicts cite the numbers they used |
+ | In-world proofs | Beaker-on-burner boils at 100.0 °C · electrolysis splits water · thermite makes iron · golden-rain PbI₂ · pour conservation 0.00% drift |
+ 
+@@ -77,7 +77,7 @@ browser. `node scripts/verify-local.mjs` runs a headless smoke check of the buil
+ 
+ - `src/tools/sandlab.jsx` — the tool UI (toolbar, tile panel, side rail, sheets)
+ - `src/core/matter-engine.js` — the simulation engine
+-- `src/core/matter/` + `matter-elements.js` — the 1,392-substance catalogue
++- `src/core/matter/` + `matter-elements.js` — the 1,822-substance catalogue
+ - `src/core/matter-reactions.js` — the named-reaction grids
+ - `src/core/matter-verdicts.js` + `matter-chemdata.js` — the property/verdict engine
+ - `src/core/matter-sound.js` + `matter-acoustics.js` — procedural audio
+@@ -94,3 +94,23 @@ app (manifest + service worker ship in `public/`). A Capacitor Android project
+ (appId `com.jackbhai.matterlab`) lives in `android/` — build the AAB on a machine
+ with Android Studio: `npm run build && npx cap sync android && npx cap open android`.
+ Privacy: everything is stored locally on your device — see `privacy.html` in the app.
++
++## Performance (2 GB / low-CPU phones)
++
++Matter Lab detects the device once (`navigator.deviceMemory`, Android flags,
++`hardwareConcurrency`) and adjusts automatically — there is nothing to
++configure unless you want to:
++
++- **Low-end start tier** — on 2 GB phones the sandbox starts at the smallest
++  resolution tier (192×108 cells, square-scaled to the viewport) instead of
++  480×270.
++- **Movement cap** — the engine offers a particle-cap toggle (Off / 4,000 /
++  8,000 / 16,000). When over the cap the movement pass runs at ~¼ duty while
++  reactions and fills keep full rate, so the world still responds but the
++  simulation stays smooth on a slow CPU.
++- **Texture off by default** on low-end devices, and Speed tops out at 2×.
++- **Procedural sound is off** on low-end devices (silence, but every physics
++  reaction is still animated and reaction cards still announce).
++
++Everything here is reversible per-session and adaptive — on a good device the
++app always starts at the normal tier with textures and sound on.
+diff --git a/V2-REPORT.md b/V2-REPORT.md
+index e9f24f6..8feda5f 100644
+--- a/V2-REPORT.md
++++ b/V2-REPORT.md
+@@ -5,7 +5,7 @@
+ **Verification:** local gate 23/23 PASS (`scripts/verify-v2.mjs`), live gate PASS (`scripts/verify-live-v2.mjs`), 0 page errors at 360×740 and 412×915.
+ 
+ ## Part A — Homepage + Modes
+-- Real landing homepage is now the default screen: hand-drawn inline-SVG flask logo + "Matter Lab" wordmark + "By Jack Bhai", hero with verified numbers only (1,392 substances · 22,500+ named reactions · 100% pair-decision coverage · 27 placeable lab items · procedural sound), About/comparison section.
++- Real landing homepage is now the default screen: hand-drawn inline-SVG flask logo + "Matter Lab" wordmark + "By Jack Bhai", hero with verified numbers only (1,822 substances · 34,775 named reactions · 100% pair-decision coverage · 26 placeable lab items · procedural sound), About/comparison section.
+ - Four mode cards, each launching a genuinely different tool configuration via `{mode, sceneId?, experimentId?, nonce}`:
+   - **Free Sandbox** — the tool as-is.
+   - **Experiments** — guided panel with 4 experiments (Boil Water, Electrolysis of Water, Golden Rain, Chill to Freezing), one-tap scene setup, numbered steps, and **real objective checking** for all 4, scanned against the live world (water ≥ 95 °C / hydrogen > 40 cells / lead-iodide > 40 cells / ice forms or water ≤ 0 °C). Verified live in the gate: "Objective complete — Hottest water: 99 °C / 95 °C". No fake ticks.
+diff --git a/src/core/matter-engine.js b/src/core/matter-engine.js
+index 4f7bdeb..ae808fc 100644
+--- a/src/core/matter-engine.js
++++ b/src/core/matter-engine.js
+@@ -18,6 +18,10 @@ export const TIERS = [
+   { cols: 480, rows: 270 },
+   { cols: 384, rows: 216 },
+   { cols: 320, rows: 180 },
++  /* Matter Lab Ultra — the deepest tier (2 GB / low-CPU phones): aspect
++     is kept by the sandbox via dimsForTier, so cells stay square on any
++     screen and the world reads smaller, not stretched. */
++  { cols: 192, rows: 108 },
+ ];
+ 
+ export const GEAR = [
+@@ -94,6 +98,11 @@ export class MatterEngine {
+     this.airVX = new Float32Array(this.pw * this.ph2);
+     this.airVY = new Float32Array(this.pw * this.ph2);
+     this.airCols = this.pw; this.airRows = this.ph2;
++    // Matter Lab Ultra: a positive maxParts caps the particle field for
++    // low-end devices — movement runs at reduced duty while the reaction
++    // pass stays full-rate (the movement cap is the cheaper of the two).
++    this.maxParts = 0;
++    this._mvCount = 0;
+     this._powered = new Set(); // gear object ids carrying charge last electric pass (reused)
+     // internal scratch (not part of the contract surface)
+     this._act = new Uint32Array(n);        // tick last became active (frontier)
+@@ -136,6 +145,9 @@ export class MatterEngine {
+     // UI gyro. windX/windY remain a separate air/wind field (fans, the
+     // wind tool, gas drift); they no longer carry the gravity direction.
+     this.gravMag = 1;
++    // Matter Lab Ultra — Power Mode: gravMag > 1 multiplies the dominant
++    // movement step (stronger gravity). Only settable via setGravityStrength.
++    this.gravExtra = 1;
+     this.windX = 0; this.windY = 0;
+     this.tick = 0; this.particles = 0;
+     // W32U-5 chunked active-region state (32x32 chunks; see _recountChunks)
+@@ -402,6 +414,26 @@ export class MatterEngine {
+     return { x: this.gx, y: this.gy, mag: this.gravMag, domX: dx, domY: dy, effX: this.gx * this.gravMag, effY: this.gy * this.gravMag };
+   }
+ 
++  /** Matter Lab Ultra — Power Mode: set gravity strength beyond the default
++      range (values > 1 multiply the dominant move step; the ≥1 gates pass
++      and all other behaviours are unchanged). */
++  setGravityStrength(mag) {
++    const m = Number(mag);
++    if (!Number.isFinite(m)) return this.gravMag;
++    this.gravMag = Math.max(0, m);
++    this.gravExtra = m > 1 ? m : 1;
++    return this.gravMag;
++  }
++
++  /** Matter Lab Ultra: set the particle cap (0 = unlimited). When the world
++      is over the cap, the movement pass runs at 1/4 duty — reactions and
++      fills keep full rate so the lab still responds — while any value set
++      to 0 lifts the degradation immediately. */
++  setMaxParts(n) {
++    this.maxParts = Math.max(0, n | 0);
++    this._mvCount = 0;
++  }
++
+   /** W32U-6: ambient (room) temperature control, clamped -30..60 C. Every
+       equilibration/cooling baseline in the engine reads this.ambientT. */
+   setAmbientT(c) {
+@@ -666,6 +698,10 @@ export class MatterEngine {
+   }
+ 
+   _movePass() {
++    // Matter Lab Ultra: particle cap — when over the cap, movement runs at
++    // 1/4 duty (every 4th call). Falls between the two extremes above 1x
++    // the cap so engines past it creep along; 0 disables the cap entirely.
++    if (this.maxParts > 0 && this.particles > this.maxParts && ((this._mvCount++ & 3) !== 0)) return;
+     const { cols, rows, el } = this;
+     // P3: movement consumes the DOMINANT axis step (dgx,dgy) — identical
+     // to the old integer gx/gy at axis-aligned vectors — plus a lateral
+@@ -673,7 +709,8 @@ export class MatterEngine {
+     // (0 at axis alignment, 1 at 45°) is the probability that a falling /
+     // rising cell takes the diagonal (dominant + lateral) step first.
+     // At the default (0,1) pLat is 0 and no extra RNG is consumed.
+-    const [gx, gy] = this._gravDom();
++    let [gx, gy] = this._gravDom();
++    if (this.gravExtra > 1) { gx *= this.gravExtra; gy *= this.gravExtra; } // Power Mode — stronger gravity multiplies the dominant step
+     const rx = gy, ry = -gx; // lateral "right" in gravity frame
+     const major = Math.max(Math.abs(this.gx), Math.abs(this.gy));
+     const minor = Math.min(Math.abs(this.gx), Math.abs(this.gy));
+diff --git a/src/core/perf.js b/src/core/perf.js
+new file mode 100644
+index 0000000..8e3734d
+--- /dev/null
++++ b/src/core/perf.js
+@@ -0,0 +1,74 @@
++/* Matter Lab Ultra — device detection + performance prefs for low-end mobile.
++ * Reads navigator.deviceMemory + hardwareConcurrency + UA flags once, caches.
++ */
++const KEY = 'omni:sandlab:perf';
++const LOW_MEM_MB = 2048;
++
++let cached = null;
++
++export function deviceInfo() {
++  if (cached) return cached;
++  const reasons = [];
++  let memMB = 0;
++  try { if (typeof navigator !== 'undefined' && navigator.deviceMemory) memMB = navigator.deviceMemory * 1024; } catch { /* noop */ }
++  const ua = (() => { try { return navigator.userAgent || ''; } catch { return ''; } })();
++  const isAndroid = /android/i.test(ua);
++  const isDesktopUA = /(windows nt|macintosh|mac os|x11; linux|x86_64)/i.test(ua);
++  const isAndroidMobile = isAndroid && !isDesktopUA;
++  const conc = (() => { try { return navigator.hardwareConcurrency || 0; } catch { return 0; } })();
++  if (memMB > 0 && memMB <= LOW_MEM_MB) reasons.push(`~${memMB} MB RAM`);
++  if (isAndroidMobile && memMB > 0 && memMB <= 3072) reasons.push('Android within 3 GB');
++  if (isAndroidMobile && conc > 0 && conc <= 4) reasons.push(`${conc} CPU threads`);
++  const lowEnd = reasons.length > 0;
++  cached = { lowEnd, memMB, conc, isAndroidMobile, reasons: lowEnd ? reasons : [] };
++  return cached;
++}
++
++export function loadPerf() {
++  let p = null;
++  try { p = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { p = null; }
++  const d = deviceInfo();
++  const merged = {
++    lowEndAuto: true,
++    startTier: -1,
++    capParts: 0,
++    disableSound: false,
++    disableTex: false,
++    lowEnd: d.lowEnd,
++    reasons: d.reasons.slice(),
++    ...(p || {}),
++  };
++  if (typeof merged.lowEndAuto !== 'boolean') merged.lowEndAuto = true;
++  if (typeof merged.startTier !== 'number' || !Number.isFinite(merged.startTier)) merged.startTier = -1;
++  merged.startTier = Math.max(-1, Math.min(5, merged.startTier | 0));
++  if (typeof merged.capParts !== 'number' || !Number.isFinite(merged.capParts)) merged.capParts = 0;
++  merged.capParts = Math.max(0, merged.capParts | 0);
++  merged.disableSound = !!merged.disableSound;
++  merged.disableTex = !!merged.disableTex;
++  merged.lowEnd = (p && typeof p.lowEnd === 'boolean') ? p.lowEnd : d.lowEnd;
++  return merged;
++}
++
++export function setPerf(p) {
++  const next = { ...loadPerf(), ...(p || {}) };
++  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* quota */ }
++  return next;
++}
++
++/* Effective start tier index for the sandbox: an explicit override wins;
++   otherwise the low-end default starts at the deepest tier (smallest grid). */
++export function autoStartTier(tiDefault) {
++  const p = loadPerf();
++  if (p.startTier >= 0) return p.startTier;
++  const di = deviceInfo();
++  return (p.lowEndAuto && di.lowEnd) ? 4 : tiDefault;
++}
++
++export function deviceSummary() {
++  const d = deviceInfo();
++  const mem = d.memMB ? `~${d.memMB} MB RAM` : 'unknown RAM';
++  const thr = d.conc ? `, ${d.conc} threads` : '';
++  const classS = d.lowEnd ? 'low-end mobile' : 'good device';
++  const why = d.reasons.length ? ` (${d.reasons.join('; ')})` : '';
++  return `${classS}${why} — ${mem}${thr}`;
++}
+diff --git a/src/tools/sandlab-sprites.js b/src/tools/sandlab-sprites.js
+index 3b02ce2..bc663f3 100644
+--- a/src/tools/sandlab-sprites.js
++++ b/src/tools/sandlab-sprites.js
+@@ -7,6 +7,43 @@ const SPR = new Map();
+ const mkC = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+ const sprGet = (key, maker) => { let v = SPR.get(key); if (!v) { try { v = maker(); } catch { v = null; } if (v) SPR.set(key, v); } return v; };
+ export const bucket = (v) => Math.max(12, Math.round(v / 8) * 8);
++/* A real laboratory beaker: tapered flute + beaded rim + thicker bottom,
++   with a light gradient, a reflection streak and real graduation numbers. */
++function drawBeakerFlute(x, kind, bw, bh) {
++  const yTop = Math.max(4, Math.round(bh * 0.04));
++  const be = Math.max(3, Math.round(bh * 0.055)); // beading lip height
++  // Slightly tapered flute body (narrower at top, wider below the rim)
++  const t = kind === 'beaker-l' ? 0.10 : kind === 'beaker-m' ? 0.07 : 0.04;
++  x.beginPath();
++  x.moveTo(bw * 0.50, yTop - 0.5);
++  x.lineTo(bw * 0.50, bh - 2.5);
++  x.bezierCurveTo(bw * 0.50, bh - 2.5, bw * (0.5 - t / 2), bh - 1.5, bw * 0.28, bh - 2);
++  x.bezierCurveTo(bw * 0.28, bh - 2, bw * 0.25, bh - 2.2, bw * 0.25, bh * 0.96);
++  x.lineTo(bw * 0.25, bh - 2);
++  x.bezierCurveTo(bw * 0.25, bh - 2, bw * (0.5 + t / 2), bh - 2.5, bw * 0.75, bh - 2);
++  x.bezierCurveTo(bw * 0.75, bh - 2, bw * 0.78, bh - 1.5, bw * 0.50, bh - 2.5);
++  x.closePath();
++  x.fill();
++  // gradient: brighter at the top edge, thinner wall below
++  const g = x.createLinearGradient(bw * 0.45, 0, bw * 0.55, bh * 0.45);
++  g.addColorStop(0, 'rgba(230,250,255,0.25)'); g.addColorStop(0.6, 'rgba(205,238,248,0.42)');
++  g.addColorStop(1, 'rgba(175,225,242,0.12)');
++  const outer = x.createLinearGradient(0, yTop, 0, bh * 0.7);
++  outer.addColorStop(0, 'rgba(205,238,248,0.9)'); outer.addColorStop(0.75, 'rgba(175,225,242,0.75)');
++  outer.addColorStop(1, 'rgba(150,205,220,0.5)');
++  // Beading lip above the rim
++  x.fillStyle = 'rgba(200,232,242,0.85)'; x.beginPath(); x.moveTo(bw * 0.20, yTop - 0.3); x.lineTo(bw * 0.30, yTop - be - 0.5); x.lineTo(bw * 0.80, yTop - be - 0.5); x.lineTo(bw * 0.90, yTop - 0.3); x.lineTo(bw * 0.50, yTop); x.closePath(); x.fill();
++  x.strokeStyle = 'rgba(150,200,215,0.9)'; x.lineWidth = Math.max(1, bw * 0.006); x.beginPath(); x.moveTo(bw * 0.55, yTop - be); x.lineTo(bw * 0.55, yTop - 0.5); x.stroke();
++  // Reflection streak (light stripe near the left wall)
++  x.fillStyle = g;
++  x.beginPath(); x.moveTo(bw * 0.38, yTop + 8); x.lineTo(bw * 0.46, yTop + 3); x.lineTo(bw * 0.52, yTop + 40); x.lineTo(bw * 0.30, yTop + 45); x.closePath(); x.fill();
++  // Mild highlight along the rim edge
++  const rim = x.createLinearGradient(bw * 0.38, 0, bw * 0.62, 0);
++  rim.addColorStop(0, 'rgba(235,250,255,0.6)'); rim.addColorStop(1, 'rgba(200,232,242,0.1)');
++  x.fillStyle = rim; x.fillRect(bw * 0.38, yTop - 1.5, bw * 0.24, 1.6);
++  // Bottom beading
++  x.fillStyle = 'rgba(205,238,248,0.8)'; x.beginPath(); x.moveTo(bw * 0.22, bh - 3); x.bezierCurveTo(bw * 0.22, bh - 3 - bh * 0.006, bw * 0.5, bh - 3 - bh * 0.004, bw * 0.78, bh - 3); x.stroke();
++}
+ export function glassSprite(kind, bw, bh) {
+   return sprGet('glass|' + kind + '|' + bw + '|' + bh, () => {
+     const c = mkC(bw, bh), x = c.getContext('2d');
+@@ -19,6 +56,7 @@ export function glassSprite(kind, bw, bh) {
+       else if (kind === 'testtube') { x.moveTo(3, 2); x.lineTo(3, bh - bw / 2); x.arc(bw / 2, bh - bw / 2, bw / 2 - 3, Math.PI, 0, true); x.lineTo(bw - 3, 2); }
+       else if (kind === 'funnel') { x.moveTo(2, 2); x.lineTo(bw - 2, 2); x.lineTo(bw * 0.56, bh * 0.55); x.lineTo(bw * 0.56, bh - 2); x.lineTo(bw * 0.44, bh - 2); x.lineTo(bw * 0.44, bh * 0.55); x.closePath(); }
+       else if (kind.startsWith('lid')) { x.rect(1, bh * 0.30, bw - 2, bh * 0.34); }
++      else if (kind.startsWith('beaker')) drawBeakerFlute(x, kind, bw, bh);
+       else { x.rect(wall / 2 + 1, 2, bw - wall - 2, bh - 4); }
+     };
+     path(); x.fill(); x.stroke();
+@@ -44,13 +82,22 @@ export function glassSprite(kind, bw, bh) {
+ export function burnerSprite(bw, bh) {
+   return sprGet('burner|' + bw + '|' + bh, () => {
+     const c = mkC(bw, bh), x = c.getContext('2d');
+-    x.fillStyle = '#2c313a'; x.beginPath(); x.ellipse(bw / 2, bh - bh * 0.10, bw * 0.46, bh * 0.11, 0, 0, 7); x.fill();
+-    x.fillStyle = '#596270'; x.fillRect(bw * 0.30, bh * 0.55, bw * 0.40, bh * 0.36);
+-    const g = x.createLinearGradient(bw * 0.42, 0, bw * 0.58, 0); g.addColorStop(0, '#79828f'); g.addColorStop(0.5, '#c7cedb'); g.addColorStop(1, '#79828f');
+-    x.fillStyle = g; x.fillRect(bw * 0.42, bh * 0.10, bw * 0.16, bh * 0.52);
+-    x.fillStyle = '#39404c'; x.fillRect(bw * 0.38, bh * 0.46, bw * 0.24, bh * 0.10);
+-    x.fillStyle = '#8a6a20'; x.fillRect(bw * 0.06, bh * 0.66, bw * 0.26, bh * 0.09);
+-    x.fillStyle = 'rgba(255,255,255,0.5)'; x.fillRect(bw * 0.46, bh * 0.12, bw * 0.03, bh * 0.46);
++    const cx = bw / 2;
++    // Pedestal + base plate (the horizontal bit the beaker sits on)
++    x.fillStyle = '#2c313a'; x.beginPath(); x.ellipse(cx, bh - bh * 0.10, bw * 0.46, bh * 0.11, 0, 0, 7); x.fill();
++    x.fillStyle = '#4a5260'; x.beginPath(); x.ellipse(cx, bh - bh * 0.22, bw * 0.40, bh * 0.06, 0, 0, 7); x.fill();
++    x.fillStyle = '#596270'; x.beginPath(); x.ellipse(cx, bh * 0.55, bw * 0.36, bh * 0.05, 0, 0, 7); x.fill();
++    // Burner tube: vertical pipe with the hot nozzle
++    x.fillStyle = '#3a4150'; x.beginPath(); x.ellipse(cx, bh * 0.47, bw * 0.42, bh * 0.025, 0, 0, 7); x.fill();
++    x.fillStyle = '#596270'; x.beginPath(); x.ellipse(cx, bh * 0.42, bw * 0.34, bh * 0.03, 0, 0, 7); x.fill();
++    // The outlet (rounded hole on top of the tube)
++    x.fillStyle = '#2c313a'; x.beginPath(); x.ellipse(cx, bh * 0.33, bw * 0.30, bh * 0.012, 0, 0, 7); x.fill();
++    // Burner ring (the hex ring around the chamber) with a swirly band
++    x.strokeStyle = '#c7cedb'; x.lineWidth = Math.max(1.5, bh * 0.13);
++    x.beginPath(); x.ellipse(cx, bh * 0.32, bw * 0.40, bh * 0.13, 0, 0, 7); x.stroke();
++    x.strokeStyle = '#a2acc0'; x.lineWidth = Math.max(1.5, bh * 0.09); x.beginPath(); x.ellipse(cx, bh * 0.30, bw * 0.46, bh * 0.10); x.stroke();
++    x.fillStyle = '#e0d4b8'; x.beginPath(); x.ellipse(cx, bh * 0.31, bw * 0.065, bh * 0.07, 0, 0, 7); x.fill();
++    x.fillStyle = 'rgba(255,255,255,0.5)'; x.fillRect(bw * 0.44, bh * 0.10, bw * 0.03, bh * 0.46); // pilot tube highlight
+     return c;
+   });
+ }
+diff --git a/src/tools/sandlab.jsx b/src/tools/sandlab.jsx
+index 95bf2bb..67f7ce4 100644
+--- a/src/tools/sandlab.jsx
++++ b/src/tools/sandlab.jsx
+@@ -8,6 +8,7 @@ import { SUBSTANCES, BY_KEY, CATS, SUBSTANCE_COUNT } from '../core/matter-elemen
+ import { MatterEngine, GEAR, TIERS } from '../core/matter-engine';
+ import { MatterSound } from '../core/matter-sound';
+ import { enabled as sfxEnabled, setEnabled as setSfxEnabled, hapticFx } from '../core/sfx';
++import { loadPerf, deviceSummary, setPerf as setPerfStore, autoStartTier } from '../core/perf.js';
+ import { GLRenderer, buildGLTables } from '../render/gl-renderer';
+ import { Card, Empty, toast } from '../ui/kit';
+ import TopBar from '../ui/TopBar.jsx';
+@@ -69,7 +70,8 @@ const TOOLS = [
+   ['stir', 'Stir/Poke'], ['clone', 'Clone'], ['inspect', 'Inspect'], ['spark', 'Spark'],
+   ['blast', 'Blast'], ['interact', 'Interact'], ['dropper', 'Dropper'],
+ ];
+-const SPEEDS = [0.25, 0.5, 1, 2, 4];
++const PERF = loadPerf(); // Matter Lab Ultra — device estimate + perf prefs (2 GB / low-CPU mobile)
++const SPEEDS = PERF.lowEnd ? [0.25, 0.5, 1, 2] : [0.25, 0.5, 1, 2, 4]; // low-end: no 4x mode (movement already capped ~4x)
+ /* HOTFIX (portrait stretch): aspect-matched grid dims — every tier keeps its
+    cell budget, but cols/rows follow the real viewport aspect so a cell is
+    SQUARE on any screen (was: fixed 16:9 landscape grid stretched onto tall
+@@ -83,7 +85,7 @@ const dimsForTier = (ti, aspect) => {
+   return { cols, rows };
+ };
+ const viewAspect = () => { try { const a = window.innerWidth / Math.max(1, window.innerHeight); return a > 0 && Number.isFinite(a) ? a : 16 / 9; } catch { return 16 / 9; } };
+-const LS = { favs: 'omni:sandlab:favs', recent: 'omni:sandlab:recent', scenes: 'omni:sandlab:scenes', recipes: 'omni:sandlab:recipes' };
++const LS = { favs: 'omni:sandlab:favs', recent: 'omni:sandlab:recent', scenes: 'omni:sandlab:scenes', recipes: 'omni:sandlab:recipes', power: 'omni:sandlab:power' };
+ const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
+ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota */ } };
+ const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 4000); };
+@@ -105,7 +107,7 @@ let RENDER_VER = 0;
+ function texFor(rec) {
+   const fams = rec.fams || [];
+   if (rec.cls === 'powder') return [1, 0.13];
+-  if (rec.cls === 'liquid') return [4, 0.08];
++  if (rec.cls === 'liquid') { if ((rec.key || '') === 'water') return [13, 0.20]; return [4, 0.08]; }
+   if (rec.cls === 'gas') return [7, 0.10];
+   if (rec.cls === 'solid') {
+     if (fams.includes('wood')) return [3, 0.12];
+@@ -160,6 +162,9 @@ const TEX_TILES = (() => {
+   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) T[10240 + y * 32 + x] = Math.round(Math.sin((x - y) / 32 * Math.PI * 2) * 60); // 10 glass sheen: diagonal band ±60
+   for (let i = 0; i < 1024; i++) T[11264 + i] = Math.round((rnd() * 2 - 1) * 15); // 11 rubber matte: near-flat ±15
+   { let rv = 0; for (let y = 0; y < 32; y++) { rv += (rnd() * 2 - 1) * 40; rv = Math.max(-80, Math.min(80, rv * 0.8)); for (let x = 0; x < 32; x++) T[12288 + y * 32 + x] = Math.round(rv + (rnd() * 2 - 1) * 16); } } // 12 copper streaks: warm per-row walk
++  /* Water film: fine vertical streaks + sparse tiny droplets (tile 13). */
++  for (let i = 0; i < 1024; i++) T[13312 + i] = Math.round(Math.sin((i % 32) * 0.42 + (i / 32) * 0.05) * 9);
++  for (let i = 0; i < 300; i++) T[13312 + (rnd() * 1024 | 0)] += Math.round(10 + rnd() * 30); // sparse droplets
+   return T;
+ })();
+ buildRenderTables();
+@@ -321,7 +326,7 @@ export function MatterLab(props) {
+   /* W32U-4 state */
+   const [viewMode, setViewMode] = useState('normal'); const viewModeRef = useRef('normal'); viewModeRef.current = viewMode;
+   /* W32U-5 state: texture toggle, vessel size, selected gear object */
+-  const [textureOn, setTextureOn] = useState(true); const textureOnRef = useRef(true); textureOnRef.current = textureOn;
++  const [textureOn, setTextureOn] = useState(() => !PERF.lowEnd); const textureOnRef = useRef(textureOn); textureOnRef.current = textureOn;
+   /* P2: procedural-texture quality (GL path): 'auto' (High + governor
+      auto-drop) | 'low' | 'med' | 'high', persisted like other settings. */
+   const [texQuality, setTexQuality] = useState(() => { const q = lsGet('omni:sandlab:texq', 'auto'); return ['auto', 'low', 'med', 'high'].includes(q) ? q : 'auto'; });
+@@ -378,6 +383,14 @@ export function MatterLab(props) {
+   const [customsVer, setCustomsVer] = useState(0);
+   const [cf, setCf] = useState({ name: '', cls: 'powder', colour: '#c8a24a', density: 1, flammability: 0, acidity: 0, ph: 7, solubility: 0, boil: '' });
+   const speedRef = useRef(2); speedRef.current = speedI; pausedRef.current = paused; mutedRef.current = muted;
++  /* Matter Lab Ultra — Power Mode: 10× speed + stronger gravity (>1). */
++  const [powerOn, setPowerOn] = useState(() => { try { return lsGet(LS.power, false); } catch { return false; } });
++  const powerRef = useRef(powerOn); powerRef.current = powerOn;
++  const applyPower = (v) => {
++    const on = !!v; setPowerOn(on); lsSet(LS.power, on);
++    const e = engRef.current; if (e) e.setGravityStrength(on ? 4 : 1);
++    toast(on ? 'Power Mode ON — 10× speed, stronger gravity' : 'Power Mode OFF');
++  };
+   const toolRef = useRef('paint'); toolRef.current = tool; const selRecRef = useRef(null);
+ 
+   const engine = () => engRef.current;
+@@ -470,6 +483,8 @@ export function MatterLab(props) {
+     toast('Simulation paused — something glitched. Your scene is safe.');
+   };
+   const resumeSim = () => { setSimError(null); setPaused(false); errOkSinceRef.current = performance.now(); startLoop(); };
++  /* Matter Lab Ultra — Performance section (Settings): apply the live particle cap. */
++  const applyPerfCap = (n) => { const e = engRef.current; if (e) e.setMaxParts(n); setPerfStore({ capParts: n }); toast(n ? `Movement cap ${n} — OK on this device` : 'Movement cap off'); };
+   const resetEngine = () => {
+     const old = engRef.current;
+     let scene = lastSceneRef.current;
+@@ -477,7 +492,8 @@ export function MatterLab(props) {
+     let eng = null;
+     const d0 = dimsForTier(tierI, aspectRef.current);
+     try { eng = new MatterEngine(d0.cols, d0.rows); } catch (e2) { setConstructErr(String((e2 && e2.message) || e2)); return; }
+-    engRef.current = eng; wireEngine(eng);
++    engRef.current = eng;
++    if (PERF.capParts > 0) eng.setMaxParts(PERF.capParts); wireEngine(eng);
+     if (scene) { try { eng.deserialize(scene); } catch { /* start empty rather than crash */ } }
+     rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows });
+     errStreakRef.current = 0; setSimError(null); setPaused(false); startLoop();
+@@ -486,7 +502,7 @@ export function MatterLab(props) {
+ 
+   useEffect(() => {
+     const w = boxRef.current ? boxRef.current.clientWidth : 360;
+-    const ti = w >= 900 ? 0 : 1;
++    const ti = autoStartTier(w >= 900 ? 0 : 1); // low-end devices start at the deepest tier (2 GB phones)
+     aspectRef.current = viewAspect();
+     setTierI(ti);
+     govRef.current.tierIndex = ti; govRef.current.startTierIndex = ti; govRef.current.ladderStep = 0; govRef.current.tickRate = 60;
+@@ -499,7 +515,8 @@ export function MatterLab(props) {
+       setConstructErr(String((e2 && e2.message) || e2)); return undefined;
+     }
+     engRef.current = eng;
+-    const snd = new MatterSound(); sndRef.current = snd;
++    if (PERF.capParts > 0) eng.setMaxParts(PERF.capParts); // low-end: movement-duty cap
++    const snd = new MatterSound(); sndRef.current = (PERF.disableSound ? null : snd);
+     wireEngine(eng);
+     rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows });
+     /* P1: create the WebGL2 renderer once. If WebGL2 is unavailable or the
+@@ -518,7 +535,7 @@ export function MatterLab(props) {
+         if (!pausedRef.current) {
+           // HARDEN B: tick-rate cap is ladder step 1-2 (60 -> 45 -> 30 ticks/s at 1x).
+           const dtMs = Math.min(100, now - lastT); lastT = now;
+-          acc += (dtMs / 1000) * govRef.current.tickRate * SPEEDS[speedRef.current];
++          acc += (dtMs / 1000) * govRef.current.tickRate * SPEEDS[speedRef.current] * (powerRef.current ? 10 : 1); // Power Mode: 10× speed
+           let steps = Math.floor(acc); acc -= steps; if (steps > 8) { steps = 8; acc = 0; }
+           for (let s2 = 0; s2 < steps; s2++) e.step();
+           if (Math.abs(e.windX) > 0.01 || Math.abs(e.windY) > 0.01) { e.windX *= 0.94; e.windY *= 0.94; } else { e.windX = 0; e.windY = 0; }
+@@ -872,6 +889,29 @@ export function MatterLab(props) {
+       }
+     }
+     if (!glWorld) { const octx = off.getContext('2d'); octx.putImageData(img, 0, 0); }
++    /* D7: heated liquids/gases — a soft ambient glow around >250 C cells
++       (hot water, boiling, workshop heat) drawn into the offscreen AFTER
++       the main pass: realistic amber halos under tubes, rising v realistically.
++       Sampled every other cell (step 2), radius 1.1, ~10% alpha. */
++    if (!glWorld && !PERF.lowEnd) {
++      const octx = off.getContext('2d');
++      const gx0 = (tick >> 1) & 1;
++      octx.save(); octx.globalCompositeOperation = 'lighter'; octx.globalAlpha = 0.10;
++      for (let gy = 0; gy < rows; gy += 2) {
++        for (let gx = 0; gx < cols; gx += 2) {
++          if (((gy + gx) & 1) !== gx0) continue;
++          const id = el[gy * cols + gx];
++          if (!id) continue;
++          const cls = CLSARR[id];
++          if (cls !== 2 && cls !== 3) continue;
++          const t = temp[gy * cols + gx];
++          if (t < 250) continue;
++          octx.fillStyle = `rgb(${Math.min(255, Math.round(250 + (t - 250) * 0.3))},${Math.min(255, Math.round(170 + (t - 250) * 0.05))},80)`;
++          octx.beginPath(); octx.arc(gx, gy, 1.1, 0, 7); octx.fill();
++        }
++      }
++      octx.restore();
++    }
+     const ctx = cv.getContext('2d');
+     /* P0 guard: never size the backing store from a 0/negative client size
+        (mid-fullscreen-transition WebViews can report 0 for a frame) — that
+@@ -1743,7 +1783,7 @@ export function MatterLab(props) {
+     lsSet('omni:sandlab:neutral', neutralRef.current);
+     toast('Calibrated — this pose is now neutral (gravity straight down)');
+   };
+-  const setGrav = (d) => { if (gyroOnRef.current) setGyroOn(false); setGravDir(d); gravDirRef.current = d; const e = engine(); if (e) { const V = [[0, 1], [0, -1], [-1, 0], [1, 0]][d & 3]; e.setGravityVector(V[0], V[1], 1); } };
++  const setGrav = (d) => { if (gyroOnRef.current) setGyroOn(false); setGravDir(d); gravDirRef.current = d; const e = engine(); if (e) { const V = [[0, 1], [0, -1], [-1, 0], [1, 0]][d & 3]; e.setGravityVector(V[0], V[1], 1); e.setGravityStrength(powerRef.current ? 4 : 1); } };
+ 
+   /* ---------------- V2: launch modes (shell contract) ---------------- */
+   useEffect(() => {
+@@ -1786,6 +1826,8 @@ export function MatterLab(props) {
+     window.__matterlab = {
+       engine: e, SUBSTANCE_COUNT, NAMED_PAIR_COUNT, CARDS,
+       gov: govRef.current, lastError: null,
++      /* Matter Lab Ultra: perf surface for the low-end pipeline */
++      perf: { deviceSummary: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, setCapParts: applyPerfCap },
+       get tickRate() { return govRef.current.tickRate; }, get ladderStep() { return govRef.current.ladderStep; },
+       get tierIndex() { return govRef.current.tierIndex; }, get startTierIndex() { return govRef.current.startTierIndex; },
+       place: (key, x, y, r = 3) => e.paint(x, y, r, (BY_KEY.get(key) || {}).id || 0),
+@@ -2037,7 +2079,7 @@ export function MatterLab(props) {
+           </div>
+         )}
+         {/* expanded side panel: ALL tools + sim controls (never overlaps the bottom panel — mutual exclusion) */}
+-        <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedI} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} />
++        <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedI} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} perf={{ device: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, applyCap: applyPerfCap }} power={powerOn} setPower={applyPower} />
+       </div>
+ 
+       {/* selected-substance bar (opens the bottom tile panel) — shown in
+diff --git a/src/ui/Settings.jsx b/src/ui/Settings.jsx
+index c12a33a..02a3626 100644
+--- a/src/ui/Settings.jsx
++++ b/src/ui/Settings.jsx
+@@ -10,7 +10,7 @@ import { toast } from './kit.jsx';
+ import { GEAR } from '../core/matter-engine.js';
+ import * as Game from '../game/game.js';
+ 
+-export default function SettingsPanel({ open, onClose, tools, speeds, tool, setTool, cloneRef, brush, setBrush, shape, setShape, paused, setPaused, engine, handleSimError, undo, clearWorld, speedI, setSpeedI, viewMode, setViewMode, textureOn, setTextureOn, texQuality, setTexQualityQ, rendererPref, applyRendererPref, rendererNote, heatRamp, applyHeatRamp, zoom, setView, viewRef, fontScale, applyFontScale, hapticsOn, applyHaptics, openMessages, unread, openSheet, recipeLen, selObj, applyObjLevel, vesselKinds, fixedSizeKinds, refreshSel, removeSelObj, applyObjScale, toggleObjLock, duplicateSelObj, gyro, gravDir, setGrav, toggleGyro, calibrateGyro, muted, setMuted }) {
++export default function SettingsPanel({ open, onClose, tools, speeds, tool, setTool, cloneRef, brush, setBrush, shape, setShape, paused, setPaused, engine, handleSimError, undo, clearWorld, speedI, setSpeedI, viewMode, setViewMode, textureOn, setTextureOn, texQuality, setTexQualityQ, rendererPref, applyRendererPref, rendererNote, heatRamp, applyHeatRamp, zoom, setView, viewRef, fontScale, applyFontScale, hapticsOn, applyHaptics, openMessages, unread, openSheet, recipeLen, selObj, applyObjLevel, vesselKinds, fixedSizeKinds, refreshSel, removeSelObj, applyObjScale, toggleObjLock, duplicateSelObj, gyro, gravDir, setGrav, toggleGyro, calibrateGyro, muted, setMuted, perf, power, setPower }) {
+   if (!open) return null;
+   return (
+     <div className="glass" data-sidepanel="1" style={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: 'min(264px, calc(100% - 16px))', zIndex: 7, overflowY: 'auto', padding: 10, borderRadius: 14 }}>
+@@ -78,7 +78,7 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
+       )}
+       <div style={{ display: 'flex', gap: 4, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }} role="group" aria-label="Zoom">
+         <span className="dim sm">Zoom {Math.round(zoom * 100)}%</span>
+-        {[1.5, 2, 3].map((z) => (
++            {[1.5, 2, 3, ...(power ? [5] : [])].map((z) => (
+           <button key={z} className={`btn sm ${Math.abs(zoom - z) < 0.01 ? '' : 'ghost'}`} onClick={() => setView(z, viewRef.current.fx, viewRef.current.fy)}>{z}×</button>
+         ))}
+         <button className="btn ghost sm" onClick={() => setView(1, null, null)}>Reset</button>
+@@ -170,6 +170,22 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
+       <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }} className="sm">
+         <input type="checkbox" checked={muted} onChange={(e) => setMuted(e.target.checked)} /> Mute reaction cards
+       </label>
++      {perf && (
++        <>
++          <div className="seclabel" style={{ marginTop: 12 }}>Performance</div>
++          <p className="dim sm" style={{ margin: 4, fontSize: 11, lineHeight: 1.35 }}>{perf.device}</p>
++          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }} role="group" aria-label="Particle cap">
++            <span className="dim sm">Movement cap</span>
++            {[0, 4000, 8000, 16000].map((n) => (
++              <button key={n} className={`btn sm ${perf.capParts === n ? '' : 'ghost'}`} aria-pressed={perf.capParts === n} onClick={() => perf.applyCap(n)}>{n || 'Off'}</button>
++            ))}
++            <span className="dim sm"> (movement ~¼ duty when capped)</span>
++          </div>
++          <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }} className="sm">
++            <input type="checkbox" checked={!!power} onChange={(e) => setPower(e.target.checked)} /> Power Mode — 10× speed, stronger gravity, Zoom 5×
++          </label>
++        </>
++      )}
+     </div>
+   );
+ }

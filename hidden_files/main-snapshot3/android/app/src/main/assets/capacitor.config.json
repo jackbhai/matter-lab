@@ -1,0 +1,19 @@
+{
+	"appId": "com.jackbhai.matterlab",
+	"appName": "Matter Lab",
+	"webDir": "dist",
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 1200,
+			"launchAutoHide": true,
+			"backgroundColor": "#060d12",
+			"showSpinner": false,
+			"androidScaleType": "CENTER_CROP"
+		}
+	},
+	"android": {
+		"allowMixedContent": false,
+		"captureInput": true,
+		"webContentsDebuggingEnabled": false
+	}
+}

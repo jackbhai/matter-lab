@@ -1,0 +1,121 @@
+
+
+
+
+:root{
+  
+  --bg:#000000;
+  --s1:#080B0A;
+  --s2:#0E1412;
+  --s3:#141C19;
+  --line:#1C2724;
+  --line2:#26332F;
+
+  
+  --green:#00FF9C;
+  --green-dim:#00C77A;
+  --cyan:#00E5FF;
+  --cyan-dim:#00B4CC;
+  --grad:linear-gradient(135deg,#00FF9C 0%,#00E5FF 100%);
+
+  
+  --fg:#E8FFF4;
+  --fg2:#9DB5AC;
+  --fg3:#84A295;   
+
+  
+  --warn:#FFD166;
+  --bad:#FF5C7A;
+
+  --r:16px; --r-sm:12px;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+
+  
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px; --sp-16:64px;
+  --pad-screen:16px;
+  --gap-section:24px;
+  --gap-card:12px;
+  --row-h:52px;
+  --row-h-dense:48px;
+
+  
+  --r-xs:8px; --r-lg:22px; --r-xl:28px; --r-pill:999px;
+
+  
+  --sh-col:color-mix(in srgb,#000 55%,transparent);
+  --sh-col-soft:color-mix(in srgb,#000 32%,transparent);
+  --sh-0:none;
+  --sh-1:0 1px 2px var(--sh-col),0 4px 14px var(--sh-col-soft);
+  --sh-2:0 2px 6px var(--sh-col),0 12px 32px var(--sh-col-soft);
+  --sh-3:0 8px 20px var(--sh-col),0 24px 64px var(--sh-col-soft);
+  --hairline:color-mix(in srgb,var(--fg) 7%,transparent);
+  --edge-hi:inset 0 1px 0 color-mix(in srgb,var(--fg) 6%,transparent);
+  --glass-bg:color-mix(in srgb,var(--bg) 76%,transparent);
+  --glass-blur:blur(18px) saturate(1.45);
+  --glass-border:color-mix(in srgb,var(--fg) 9%,transparent);
+  
+  --glass-edge:linear-gradient(180deg,color-mix(in srgb,var(--fg) 14%,transparent),color-mix(in srgb,var(--fg) 2%,transparent));
+
+  
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-spring:cubic-bezier(.34,1.4,.64,1);
+  --ease-move:cubic-bezier(.2,.9,.3,1);
+  --d-1:120ms; --d-2:200ms; --d-3:280ms; --d-4:420ms;
+
+  
+  --font-display:'Space Grotesk','Noto Sans Devanagari','Noto Sans Gurmukhi',system-ui,sans-serif;
+  --font-body:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans Devanagari','Noto Sans Gurmukhi',sans-serif;
+  --font-mono:'DM Mono',ui-monospace,Menlo,monospace;
+}
+
+
+
+
+
+
+
+
+:root {
+  --theme-transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+
+
+
+
+
+
+
+:root{--ease:cubic-bezier(.22,.9,.26,1)}
+
+
+
+
+
+
+
+
+
+:root{
+  --font-ar:'Noto Naskh Arabic','Traditional Arabic','Geeza Pro',serif;
+  --font-ur:'Noto Nastaliq Urdu','Noto Naskh Arabic','Geeza Pro',serif;
+  --font-pa:'Noto Sans Gurmukhi','Raavi','Nirmala UI',sans-serif;
+  --font-dev:'Noto Sans Devanagari','Mangal','Nirmala UI',sans-serif;
+}
+
+
+
+
+
+
+
+
+:root{--theme-transition:background-color .3s ease,color .3s ease,border-color .3s ease,box-shadow .3s ease}
+
+
+
+
+
+:root{--bloom:0 0 24px color-mix(in srgb,var(--green) 28%,transparent);--bloom-dot:0 0 10px color-mix(in srgb,var(--green) 35%,transparent)}

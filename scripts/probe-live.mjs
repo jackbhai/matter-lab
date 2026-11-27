@@ -1,0 +1,14 @@
+import { resolveChromePath } from './chrome-path.mjs';
+const puppeteer = (await import('puppeteer-core')).default;
+const browser = await puppeteer.launch({ executablePath: resolveChromePath(), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+const page = await browser.newPage();
+await page.setViewport({ width: 412, height: 915 });
+const errs = [];
+page.on('pageerror', (e) => errs.push(e.message));
+await page.goto('https://jackbhai.github.io/matter-lab/', { waitUntil: 'load', timeout: 120000 });
+await new Promise((r) => setTimeout(r, 6000));
+await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => /Enter Free Sandbox|Open the lab/i.test(x.innerText || '')); if (b) b.click(); });
+await new Promise((r) => setTimeout(r, 4000));
+const info = await page.evaluate(() => { const M = window.__matterlab; if (!M) return { hook: false }; return { hook: true, grid: M.engine.cols + 'x' + M.engine.rows, touchbar: !!document.querySelector('[data-touchbar="1"]'), brushpill: !!document.querySelector('[data-brushpill="1"]') }; });
+console.log('LIVE DOM:', JSON.stringify(info), 'pageerrors:', errs.length);
+await browser.close();

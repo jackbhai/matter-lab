@@ -1,0 +1,169 @@
+/* ============================================================
+   W31 Phase 6 — PERSONALISATION + SYSTEMS (builder B6b)
+   Everything here is driven by the <html> attributes/vars that
+   core/settings.js applyPersonalisation() writes:
+     --uiscale            §5.7/3.11 text step (0.875–1.125)
+     data-density         §5.3 comfortable | compact
+     data-icons           §5.6 line | bold | duotone
+     data-motion          §5.8 full(absent) | soft | reduced(existing)
+     data-mood            §5.1 lively | calm
+   Plus: §2.16 Day material parity, §7.9 focus completion,
+   §7.19 print. Look & feel only — no layout structure changes.
+   ============================================================ */
+
+/* ---------- §5.7 + 3.11: text steps via the token multiplier ----------
+   The ramp classes keep their weights/leading from theme.css; only
+   the size is re-expressed through --uiscale so every type moment
+   (kinetic sizes, outline numerals) scales proportionally. */
+.t-hero{font-size:calc(40px * var(--uiscale, 1))}
+.t-display{font-size:calc(30px * var(--uiscale, 1))}
+.t-title{font-size:calc(22px * var(--uiscale, 1))}
+.t-tooltitle{font-size:calc(17px * var(--uiscale, 1))}
+.t-body{font-size:calc(15px * var(--uiscale, 1))}
+.t-body-sm{font-size:calc(13.5px * var(--uiscale, 1))}
+.t-label{font-size:calc(12px * var(--uiscale, 1))}
+.t-caption{font-size:calc(11.5px * var(--uiscale, 1))}
+.outline-num{font-size:calc(120px * var(--uiscale, 1))}
+
+/* ---------- §5.3 density ----------
+   Token multiplier on the spacing scale. Compact: rows 44px (the
+   §3.5 touch floor — never below), section gaps −8px, card gaps −4px,
+   tile padding −4px. Interactive min-heights are floored at 44px. */
+html[data-density="compact"]{
+  --density:.85;
+  --row-h:44px;
+  --gap-section:16px;
+  --gap-card:8px;
+}
+html[data-density="compact"] .row{padding-top:8px;padding-bottom:8px;min-height:44px}
+html[data-density="compact"] .tile{padding:8px 6px;min-height:104px}
+html[data-density="compact"] .tab{min-height:44px}
+html[data-density="compact"] .btn{min-height:44px}
+
+/* ---------- §5.6 icon styles ----------
+   Treatments of the SAME glyphs (icons.jsx .ico, stroke 1.7 stock):
+   Bold = stroke-width 2.2 via the CSS stroke-width property (which
+   overrides the presentation attribute) + filled tiles; Duotone =
+   glyph in accent on an accent-18% tile with a 30%-opacity echo of
+   the same glyph offset behind it (drop-shadow of the glyph itself).
+   No glyph is redrawn. */
+html[data-icons="bold"] .ico{stroke-width:2.2}
+html[data-icons="bold"] .tile .ic,
+html[data-icons="bold"] .cont-ic{
+  background:color-mix(in srgb, var(--ca, var(--green)) 22%, transparent);
+}
+html[data-icons="duotone"] .tile .ic,
+html[data-icons="duotone"] .cont-ic,
+html[data-icons="duotone"] .catcard-ic{
+  background:color-mix(in srgb, var(--ca, var(--green)) 18%, transparent);
+}
+html[data-icons="duotone"] .ico{
+  filter:drop-shadow(2.5px 2.5px 0 color-mix(in srgb, currentColor 30%, transparent));
+}
+
+/* ---------- §5.8 motion Soft + §5.1 calm mood ----------
+   Soft: durations ×1.25, the spring curve is replaced by the damped
+   ease-out (overshoot removed), aurora drift off. Calm mood (§5.1)
+   stills the drift layer only — the user's explicit Motion choice
+   above still governs durations. Reduced is theme.css's own block. */
+html[data-motion="soft"]{
+  --d-1:150ms; --d-2:250ms; --d-3:350ms; --d-4:525ms;
+  --ease-spring:var(--ease-out);
+}
+html[data-motion="soft"] .meshbg.live i,
+html[data-mood="calm"] .meshbg.live i,
+html[data-mood="calm"] .catmesh-drift i{
+  animation:none;
+}
+
+/* ---------- §2.16 Day-mode material parity ----------
+   Each Dark effect re-tuned for Day, not inverted: glass brighter
+   (82% bg, saturate 1.2), refraction edge flips to a darker hairline,
+   glows become soft accent shadows (14%), mesh/grain caps already
+   live in theme.css ([data-theme="light"] .meshbg .55, grain .02)
+   and are re-asserted here so the parity checklist has one home. */
+html[data-theme="light"]{
+  --glass-bg:color-mix(in srgb, var(--bg) 82%, transparent);
+  --glass-blur:blur(18px) saturate(1.2);
+  --glass-border:color-mix(in srgb, #000 10%, transparent);
+  --glass-edge:linear-gradient(180deg,
+    color-mix(in srgb, #000 12%, transparent),
+    color-mix(in srgb, #000 3%, transparent));
+  --bloom:0 6px 18px color-mix(in srgb, var(--green) 14%, transparent);
+  --bloom-dot:0 2px 8px color-mix(in srgb, var(--green) 14%, transparent);
+  --sh-col:color-mix(in srgb, #000 16%, transparent);
+  --sh-col-soft:color-mix(in srgb, #000 9%, transparent);
+}
+html[data-theme="light"] .meshbg{opacity:calc(var(--mi, 1) * .55)}
+html[data-theme="light"] .meshbg::after{opacity:.02}
+
+/* ---------- §7.9 focus completion ----------
+   Every interactive element gets the drawn ring on keyboard focus;
+   touch users never see it (:focus-visible discipline). The ring
+   "draws" via a 120ms box-shadow settle (§1.23). */
+:focus{outline:none}
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible,
+[role="button"]:focus-visible, [role="tab"]:focus-visible{
+  outline:2px solid var(--cyan);
+  outline-offset:2px;
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--cyan) 18%, transparent);
+  transition:box-shadow 120ms var(--ease-out);
+}
+
+/* ---------- §7.13 motion inventory — hidden-tab pause, global ----------
+   kit.jsx toggles html.doc-hidden on visibilitychange; theme.css only
+   paused the mesh blooms with it. Every infinite animation now pauses
+   while the document is hidden (battery rule), in this one rule. */
+html.doc-hidden *, html.doc-hidden *::before, html.doc-hidden *::after{
+  animation-play-state:paused !important;
+}
+
+/* ---------- §3.10 font specimen gallery ---------- */
+.fontspec{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;
+  padding:10px 12px;margin-top:6px;border-radius:10px;cursor:pointer;
+  background:var(--s1);color:var(--fg);min-height:44px;
+  border:1px solid var(--line)}
+.fontspec.on{border:2px solid var(--green)}
+.fontspec .fs-name{font-size:11px;color:var(--fg3);letter-spacing:.02em}
+.fontspec .fs-pan{font-size:19px;line-height:1.3;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.fontspec .fs-dev{font-size:15px;line-height:1.35;color:var(--fg2)}
+
+/* ---------- §5.2 accent wheel ---------- */
+.accent-wheel{border-radius:50%;cursor:crosshair;touch-action:none;
+  border:1px solid var(--line2)}
+.accent-grad{height:44px;border-radius:10px;border:1px solid var(--line)}
+
+/* ---------- §7.19 print ----------
+   What leaves the app represents the brand: white page, black text,
+   no chrome, no shadows, sane breaks. Verified headlessly on three
+   data tools (w31-measure.mjs print section). */
+@media print{
+  html,body{background:#fff !important}
+  body,#root,.app,.view{background:#fff !important;color:#000 !important}
+  .topbar,.tabbar,.aifab,.drawer,.palette,.sb,.sb-foot,.toastbox,
+  .install-banner,.fold-h .chev{display:none !important}
+  *{box-shadow:none !important;text-shadow:none !important;
+    -webkit-print-color-adjust:economy;print-color-adjust:economy}
+  .card,.tf,.stat,.row{background:#fff !important;color:#000 !important;
+    border-color:#bbb !important;break-inside:avoid}
+  a{color:#000 !important;text-decoration:underline}
+  img{max-width:100%}
+  @page{margin:14mm}
+}
+
+/* W32U-3 Phase 2 (HERO): slim flagship strip inside the hero — one
+   horizontally scrolling row of compact chips; never wraps, so nothing
+   can overlap at 360px. Colours/type ride the W31 tokens. */
+.herostrip{display:flex;gap:8px;margin-top:12px;overflow-x:auto;overflow-y:hidden;
+  padding-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.herostrip::-webkit-scrollbar{display:none}
+.herochip{flex:0 0 auto;max-width:240px;display:flex;flex-direction:column;gap:1px;
+  align-items:flex-start;text-align:left;padding:7px 11px;border-radius:12px;
+  background:var(--s3);border:1px solid var(--line);color:var(--fg);
+  cursor:pointer;transition:border-color var(--d-1) var(--ease-out)}
+.herochip:hover,.herochip:focus-visible{border-color:var(--green)}
+.herochip b{font-size:12px;line-height:1.25;white-space:nowrap}
+.herochip small{font-size:10.5px;line-height:1.3;color:var(--fg2);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
