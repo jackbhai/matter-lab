@@ -2038,7 +2038,16 @@ export function MatterLab(props) {
       {/* canvas stage — full-bleed; side rail + expanded panel float over it */}
       <div ref={boxRef} className="ml-stage" style={{ position: 'relative', flex: fsMode ? 1 : undefined }}>
         <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { ptrRef.current = null; dragRef.current = null; dragCandRef.current = null; ptrMapRef.current.clear(); pinchRef.current = null; }}
-          onWheel={(ev) => { if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); const pt = worldPtFloat(ev.clientX, ev.clientY); const z = viewRef.current.z * (ev.deltaY < 0 ? 1.15 : 1 / 1.15); if (pt) setView(z, pt.x, pt.y); } }}
+          onWheel={(ev) => {
+            // Wheel zoom (all devices) — pinch-zoom on mobile, wheel on
+            // desktop (ctrl/meta keeps it explicit); setView stays the single
+            // zoom path so pointer mapping and geometry math are shared.
+            if (ev.ctrlKey || ev.metaKey || ev.deltaY !== 0) {
+              const pt = worldPtFloat(ev.clientX, ev.clientY);
+              const z = viewRef.current.z * (ev.deltaY < 0 ? 1.15 : 1 / 1.15);
+              if (pt) { ev.preventDefault(); setView(z, pt.x, pt.y); }
+            }
+          }}
           style={{ width: '100%', minHeight: 0, aspectRatio: fsMode ? undefined : `${gridDims.cols} / ${gridDims.rows}`, height: fsMode ? '100%' : undefined, display: 'block', borderRadius: 12, border: '1px solid var(--line)', touchAction: 'none', background: '#0a0c12' }} />
         {/* REDESIGN COMPLIANCE: the floating side rail was retired — its
             actions (Tools & controls, Messages, Clear, Fullscreen) live in
