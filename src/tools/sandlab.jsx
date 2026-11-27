@@ -228,6 +228,8 @@ export function MatterLab(props) {
   const launch = props && props.launch ? props.launch : undefined;
   const onHome = props && typeof props.onHome === 'function' ? props.onHome : null;
   const rootRef = useRef(null), boxRef = useRef(null), canvasRef = useRef(null);
+  // true = the 2D fallback is showing (draw-call protection, keyboard, pointer)
+  const glFallbackShown = useRef(false);
   const engRef = useRef(null), offRef = useRef(null), imgRef = useRef(null);
   const sndRef = useRef(null);
   const rafRef = useRef(0), ptrRef = useRef(null);
@@ -800,7 +802,7 @@ export function MatterLab(props) {
        through the 2D pipeline below, which shares the same present step —
        the user sees the viridis ramp regardless of renderer. */
     const cbHeat = vm === 'heat' && heatRampRef.current === 'viridis';
-    if (glr && glr.ok && !fbRef.current && glEnabledRef.current && !cbHeat) {
+    if (glr && glr.ok && !fbRef.current && glEnabledRef.current && !cbHeat && !glFallbackShown.current) {
       try {
         if (glr.tablesVer !== RENDER_VER) glr.setTables(buildGLTables(SUBSTANCES, COLS, TEX_TYPE, TEX_AMP, CLSARR, ISSMOKE, GLASS_ID, LUT), RENDER_VER);
         let q = texQualityRef.current === 'low' ? 0 : texQualityRef.current === 'med' ? 1 : 2; // 'auto' and 'high' start at High
@@ -808,7 +810,7 @@ export function MatterLab(props) {
         if (govRef.current.ladderStep >= 5) q = 0;
         glWorld = !!glr.draw(e, { view: vm === 'heat' ? 1 : vm === 'pressure' ? 2 : 0, quality: q, texOn: textureOnRef.current, now }, hotBands);
         if (!glWorld) { fbRef.current = true; if (!wdRef.current.dismissed) setGfx('fallback'); }
-      } catch { fbRef.current = true; if (!wdRef.current.dismissed) setGfx('fallback'); glWorld = false; }
+      } catch { fbRef.current = true; glFallbackShown.current = true; if (!wdRef.current.dismissed) setGfx('fallback'); glWorld = false; }
     }
     if (!glWorld) for (let i = 0, n = cols * rows; i < n; i++) {
       const o = i * 4, id = el[i];
@@ -1823,11 +1825,14 @@ export function MatterLab(props) {
       else if (ev.key === 'f' || ev.key === 'F') { if (kbRef.current.toggleFs) kbRef.current.toggleFs(); }
       else if ((ev.key === 'h' || ev.key === 'H') && onHome) onHome();
       else if (/^[1-9]$/.test(ev.key)) { const t2 = TOOLS[Number(ev.key) - 1]; if (t2) setTool(t2[0]); }
-      else if (ev.key === 'm' || ev.key === 'M') setSpeedI((s2) => (s2 + 1) % SPEEDS.length); // cycle speed
-      else if (ev.key === 'p' || ev.key === 'P') setPicker((p2) => !p2); // open/close substance picker
-      else if (ev.key === 'g' || ev.key === 'G') setSideOpen((s2) => !s2); // settings panel
+      else if (ev.key === 'm' || ev.key === 'M') setSpeedI((s2) => (s2 + 1) % SPEEDS.length);
+      else if (ev.key === 'p' || ev.key === 'P') setPicker((p2) => !p2);
+      else if (ev.key === 'g' || ev.key === 'G') setSideOpen((s2) => !s2);
     };
+    const h2 = (ev) => { if (ev.target && ev.target.tabIndex === 0 && ev.target.tagName !== 'INPUT') glFallbackShown.current = false; };
+    window.addEventListener('pointerdown', h2);
     window.addEventListener('keydown', h);
+    return () => { window.removeEventListener('keydown', h); window.removeEventListener('pointerdown', h2); };
     return () => window.removeEventListener('keydown', h);
   }, [onHome]);
 
@@ -2050,7 +2055,7 @@ export function MatterLab(props) {
 
       {/* canvas stage — full-bleed; side rail + expanded panel float over it */}
       <div ref={boxRef} className="ml-stage" style={{ position: 'relative', flex: fsMode ? 1 : undefined }}>
-        <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { ptrRef.current = null; dragRef.current = null; dragCandRef.current = null; ptrMapRef.current.clear(); pinchRef.current = null; }}
+        <canvas ref={canvasRef} style={{ touchAction: 'none', userSelect: 'none' }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { ptrRef.current = null; dragRef.current = null; dragCandRef.current = null; ptrMapRef.current.clear(); pinchRef.current = null; }}
           onWheel={(ev) => {
             // Wheel zoom (all devices) — pinch-zoom on mobile, wheel on
             // desktop (ctrl/meta keeps it explicit); setView stays the single
