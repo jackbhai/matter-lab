@@ -8,7 +8,7 @@ import { CARDS } from '../core/matter-reactions.js';
 import { computeObjective, MATTER_EXPERIMENTS } from '../tools/sandlab-scenes.js';
 
 const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
-const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota */ } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
 
 export const K = {
   stars: 'matterlab:stars',
@@ -22,6 +22,7 @@ export const K = {
   renderer: 'matterlab:renderer',
   heatRamp: 'matterlab:heat-ramp',
   fontScale: 'matterlab:fontscale',
+  touchLevel: 'matterlab:touch-level',
 };
 
 /* ---------------- progression: stars + unlocks ---------------- */
@@ -179,6 +180,22 @@ export const getDailyState = () => lsGet(K.daily, {}); // { [dateKey]: { done, a
 export function markDailyDone(key = dateKey()) { const all = getDailyState(); if (!all[key] || !all[key].done) { all[key] = { done: true, at: Date.now() }; lsSet(K.daily, all); return true; } return false; }
 
 /* ---------------- named save slots ---------------- */
+export const MAX_SAVE_SLOTS = 12;
+export const MAX_SAVE_SLOT_NAME_LENGTH = 48;
+export function normalizeSaveSlotName(value, fallback = 'Scene') {
+  const name = String(value == null ? '' : value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_SAVE_SLOT_NAME_LENGTH);
+  return name || String(fallback).slice(0, MAX_SAVE_SLOT_NAME_LENGTH);
+}
+export function upsertSaveSlot(slots, slot) {
+  if (!Array.isArray(slots) || !slot || typeof slot !== 'object') return { ok: false, reason: 'invalid' };
+  const name = normalizeSaveSlotName(slot.name, 'Scene');
+  const index = slots.findIndex((entry) => normalizeSaveSlotName(entry && entry.name, '').toLocaleLowerCase() === name.toLocaleLowerCase());
+  if (index < 0 && slots.length >= MAX_SAVE_SLOTS) return { ok: false, reason: 'limit' };
+  const saved = { ...slot, id: index >= 0 ? slots[index].id : slot.id, name };
+  if (!saved.id) return { ok: false, reason: 'invalid' };
+  const next = index >= 0 ? slots.map((entry, i) => i === index ? saved : entry) : [...slots, saved];
+  return { ok: true, updated: index >= 0, slots: next };
+}
 /* Legacy single-key scenes (omni:sandlab:scenes, numeric slots) are imported
    as named slots on first read — the old key is left untouched, so nothing
    is lost if an older build reads it again. */
@@ -207,6 +224,8 @@ export const getHeatRamp = () => (lsGet(K.heatRamp, 'classic') === 'viridis' ? '
 export const setHeatRamp = (v) => lsSet(K.heatRamp, v);
 export const getFontScale = () => { const v = lsGet(K.fontScale, 'm'); return ['s', 'm', 'l', 'xl'].includes(v) ? v : 'm'; };
 export const setFontScale = (v) => lsSet(K.fontScale, v);
+export const getTouchLevel = () => { const v = lsGet(K.touchLevel, 'medium'); return ['easy', 'medium', 'hard'].includes(v) ? v : 'medium'; };
+export const setTouchLevel = (v) => lsSet(K.touchLevel, ['easy', 'medium', 'hard'].includes(v) ? v : 'medium');
 
 /* =====================================================================
    DELTA UNDO/REDO STACK

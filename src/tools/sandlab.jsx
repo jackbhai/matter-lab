@@ -16,6 +16,7 @@ import TopBar from '../ui/TopBar.jsx';
 import { Dock, PickerStrip } from '../ui/Dock.jsx';
 import GlassShell from '../ui/GlassShell.jsx';
 import ToolWheel from '../ui/ToolWheel.jsx';
+import TouchActionBar from '../ui/TouchActionBar.jsx';
 import SettingsPanel from '../ui/Settings.jsx';
 import Picker from '../ui/Picker.jsx';
 import InfoCard from '../ui/InfoCard.jsx';
@@ -30,6 +31,9 @@ import { Icon } from '../ui/icons';
    (CARDS/PROFILES may be a Map or null-shaped), per the contract API. */
 import { CARDS, NAMED_PAIR_COUNT, NAMED_REACTIVE_COUNT, PROFILES } from '../core/matter-reactions';
 import * as Game from '../game/game.js';
+import { SceneSwapHistory } from '../game/scene-history.js';
+import { decodeSceneCode, decodeSceneFileText, encodeShareCode as encodeSceneShareCode, isSceneData, normalizeSceneName, serializeSceneFile, summarizeScene } from '../game/scene-archive.js';
+import { DEFAULT_TOUCH_LEVEL, TOUCH_LEVELS, effectiveBrushRadius, interpolateTouchStroke, isTouchDoubleTap, normalizeTouchLevel, touchStrokePointBudget } from '../core/touch-controls.js';
 import { DiscoveryPanel, AchievementsPanel, CoachMarks, COACH_STEPS } from '../ui/GamePanels.jsx';
 import { decidePair } from '../core/matter-verdicts';
 /* P0-REOPEN: in-app / WebView user agents — the presentation-failure class
@@ -51,11 +55,8 @@ const outcomeSummary = (v) => { if (!v) return ''; const o = v.outcome; if (o) {
 const lighten = (hexCol, f = 0.35) => { const n = parseInt(String(hexCol).replace('#',''), 16); if (!Number.isFinite(n)) return 0xaaaaaa; const r = Math.min(255, Math.round(((n>>16)&255) + (255-((n>>16)&255))*f)), g = Math.min(255, Math.round(((n>>8)&255) + (255-((n>>8)&255))*f)), b = Math.min(255, Math.round((n&255) + (255-(n&255))*f)); return (r<<16)|(g<<8)|b; };
 const hexToInt = (hexCol) => { const n = parseInt(String(hexCol||'#888888').replace('#',''), 16); return Number.isFinite(n) ? n : 0x888888; };
 const ensureCols = () => { for (const rec of SUBSTANCES) { if (rec && rec.id != null && !COLS[rec.id]) { const a = hex((rec.col && rec.col[0]) || 0x888888), b = hex((rec.col && rec.col[1]) || (rec.col && rec.col[0]) || 0x888888); COLS[rec.id] = [a, b]; } } buildRenderTables(); };
-/* share-code codec (ML1. gzip / ML0. raw) */
+/* Legacy raw-code helper used only by the diagnostics hook; UI archives use scene-archive.js. */
 const b64urlEnc = (u8) => { let bin=''; for (let i=0;i<u8.length;i+=8192) bin += String.fromCharCode.apply(null, u8.subarray(i,i+8192)); return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); };
-const b64urlDec = (str) => { const b64 = String(str).replace(/-/g,'+').replace(/_/g,'/'); const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : ''; const bin = atob(b64+pad); const out = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; };
-async function encodeShareCode(sceneObj) { const raw = new TextEncoder().encode(JSON.stringify(sceneObj)); if (typeof CompressionStream !== 'undefined') { try { const cs = new CompressionStream('gzip'); const gz = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(cs)).arrayBuffer()); return 'ML1.' + b64urlEnc(gz); } catch { /* fall through */ } } return 'ML0.' + b64urlEnc(raw); }
-async function decodeShareCode(code) { const t = String(code||'').trim(); if (t.startsWith('ML1.')) { if (typeof DecompressionStream === 'undefined') throw new Error('gzip unsupported'); const ds = new DecompressionStream('gzip'); const raw = await new Response(new Blob([b64urlDec(t.slice(4))]).stream().pipeThrough(ds)).arrayBuffer(); return JSON.parse(new TextDecoder().decode(raw)); } if (t.startsWith('ML0.')) return JSON.parse(new TextDecoder().decode(b64urlDec(t.slice(4)))); throw new Error('bad prefix'); }
 const copyText = async (txt) => { try { await navigator.clipboard.writeText(txt); return true; } catch { try { const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); ta.remove(); return ok; } catch { return false; } } };
 /* view-mode ramps */
 const rampLerp = (stops, v) => { if (v <= stops[0][0]) return stops[0].slice(1); for (let i=1;i<stops.length;i++) { if (v <= stops[i][0]) { const [v0,...c0]=stops[i-1]; const [v1,...c1]=stops[i]; const f=(v-v0)/Math.max(1e-6,(v1-v0)); return c0.map((c,k)=>Math.round(c+(c1[k]-c)*f)); } } return stops[stops.length-1].slice(1); };
@@ -72,6 +73,7 @@ const TOOLS = [
   ['stir', 'Stir/Poke'], ['clone', 'Clone'], ['inspect', 'Inspect'], ['spark', 'Spark'],
   ['blast', 'Blast'], ['interact', 'Interact'], ['dropper', 'Dropper'],
 ];
+const TOUCH_STROKE_TOOLS = new Set(['paint', 'spray', 'dropper', 'eraser', 'heat', 'cool']);
 const PERF = loadPerf(); // Matter Lab Ultra — device estimate + perf prefs (2 GB / low-CPU mobile)
 const SPEEDS = PERF.lowEnd ? [0.25, 0.5, 1, 2] : [0.25, 0.5, 1, 2, 4]; // low-end: no 4x mode (movement already capped ~4x)
 /* HOTFIX (portrait stretch): aspect-matched grid dims — every tier keeps its
@@ -251,6 +253,8 @@ export function MatterLab(props) {
   const undoRef = useRef(null), redoRef = useRef(null);
   if (!undoRef.current) undoRef.current = new Game.DeltaStack(30, 24 * 1024 * 1024);
   if (!redoRef.current) redoRef.current = new Game.DeltaStack(30, 24 * 1024 * 1024);
+  const sceneSwapRef = useRef(null);
+  if (!sceneSwapRef.current) sceneSwapRef.current = new SceneSwapHistory();
   const cloneRef = useRef(null), firedRef = useRef(new Set()), recipeRef = useRef([]);
   const gyroRef = useRef({ cand: -1, since: 0 });
   /* UI2 gyro (high class): low-pass filtered orientation, calibrated neutral,
@@ -300,7 +304,7 @@ export function MatterLab(props) {
   const loopRef = useRef(null); const lastSceneRef = useRef(null);
   const depthRef = useRef(null); const hotRef = useRef([]); const hotBandRef = useRef(new Uint8Array(8));
   const [tool, setTool] = useState('paint');
-  const [brush, setBrush] = useState(6);
+  const [brush, setBrush] = useState(6); const brushRef = useRef(6); brushRef.current = brush;
   const [shape, setShape] = useState('circle');
   const [selId, setSelId] = useState(() => (BY_KEY.get('sand') || SUBSTANCES[1]).id);
   const [paused, setPaused] = useState(false); const pausedRef = useRef(false);
@@ -389,6 +393,8 @@ export function MatterLab(props) {
   const [heatRamp, setHeatRamp] = useState(() => Game.getHeatRamp());
   const heatRampRef = useRef(heatRamp); heatRampRef.current = heatRamp;
   const [fontScale, setFontScale] = useState(() => Game.getFontScale());
+  const [touchLevel, setTouchLevel] = useState(() => normalizeTouchLevel(Game.getTouchLevel() || DEFAULT_TOUCH_LEVEL));
+  const touchLevelRef = useRef(touchLevel); touchLevelRef.current = touchLevel;
   /* ---- UI-B zoom / gesture state ---- */
   const [zoom, setZoom] = useState(1);
   const viewRef = useRef({ z: 1, fx: null, fy: null }); // fx/fy = world cell at canvas centre (null = world centre)
@@ -402,6 +408,7 @@ export function MatterLab(props) {
   const [lookupA, setLookupA] = useState('water'); const [lookupB, setLookupB] = useState('sodium');
   const [lookupRes, setLookupRes] = useState(null);
   const [shareInput, setShareInput] = useState('');
+  const [saveBusy, setSaveBusy] = useState(false); const saveBusyRef = useRef(false);
   const [showCreate, setShowCreate] = useState(false);
   const [customsVer, setCustomsVer] = useState(0);
   const [cf, setCf] = useState({ name: '', cls: 'powder', colour: '#c8a24a', density: 1, flammability: 0, acidity: 0, ph: 7, solubility: 0, boil: '' });
@@ -1196,6 +1203,7 @@ export function MatterLab(props) {
     }
     /* ghost preview for shape tools */
     const p = ptrRef.current;
+    const previewBrush = p ? effectiveBrushRadius(brush, touchLevelRef.current, p.pointerType) : brush;
     if (p && p.start && (tool === 'line' || tool === 'rect' || tool === 'circle' || (tool === 'clone' && !cloneRef.current))) {
       ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
       const x0 = ox + p.start.x * sx, y0 = oy + p.start.y * sy, x1 = ox + p.cur.x * sx, y1 = oy + p.cur.y * sy;
@@ -1207,8 +1215,8 @@ export function MatterLab(props) {
     } else if (p && p.cur) {
       ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1;
       ctx.beginPath();
-      if (shape === 'square') ctx.rect(ox + (p.cur.x - brush) * sx, oy + (p.cur.y - brush) * sy, brush * 2 * sx, brush * 2 * sy);
-      else ctx.arc(ox + p.cur.x * sx, oy + p.cur.y * sy, brush * sx, 0, 7);
+      if (shape === 'square') ctx.rect(ox + (p.cur.x - previewBrush) * sx, oy + (p.cur.y - previewBrush) * sy, previewBrush * 2 * sx, previewBrush * 2 * sy);
+      else ctx.arc(ox + p.cur.x * sx, oy + p.cur.y * sy, previewBrush * sx, 0, 7);
       ctx.stroke();
     }
     /* Hover ring — a subtle cyan ring around the world cell under the
@@ -1294,16 +1302,14 @@ export function MatterLab(props) {
 
   /* ---------------- helpers ---------------- */
   const logStep = useCallback((s) => { recipeRef.current = [...recipeRef.current, s].slice(-500); setRecipeLen(recipeRef.current.length); }, []); // HARDEN cap: recipe steps <= 500
-  /* UI-B DELTA undo/redo: snapshot states are pushed onto DeltaStacks
-     (game.js) — one full base + run-length patches of changed cells, temp
-     at the serialize format's own 1°C precision. Restore semantics are
-     unchanged from the full-copy era: the target state is reconstructed
-     exactly and set wholesale (objects are NOT part of snapshots — same
-     as before, e.clear() drops them; resize handling identical). */
+  /* UI-B DELTA undo/redo: brush actions use compact cell deltas. A
+     SceneSwapHistory keeps one complete before/after serialization for a
+     destructive scene load so Undo also restores objects, bodies and size. */
   const snapshot = useCallback(() => {
     const e = engine(); if (!e) return;
     undoRef.current.push(Game.stateOf(e));
-    redoRef.current.clear(); // UI-A: a fresh stroke invalidates the redo stack
+    redoRef.current.clear();
+    sceneSwapRef.current.discardRedo();
   }, []);
   const applySnap = (e, s) => {
     if (s.cols !== e.cols || s.rows !== e.rows) { e.resize(s.cols, s.rows); rebuildOff(e); setGridDims({ cols: e.cols, rows: e.rows }); }
@@ -1311,17 +1317,26 @@ export function MatterLab(props) {
     let n = 0; for (let i = 0; i < e.el.length; i++) if (e.el[i]) n++;
     e.particles = n; setParts(n);
   };
+  const syncDeserializedScene = (e) => { rebuildOff(e); setGridDims({ cols: e.cols, rows: e.rows }); setParts(e.stats().particles); };
+  const replaceSceneWithUndo = (e, scene) => {
+    if (!sceneSwapRef.current.replace(e, scene)) return false;
+    undoRef.current.clear(); redoRef.current.clear();
+    syncDeserializedScene(e);
+    return true;
+  };
   const undo = () => {
     const e = engine(); if (!e) return;
-    const s = undoRef.current.popTarget(); if (!s) { toast('Nothing to undo'); return; }
-    redoRef.current.push(Game.stateOf(e));
-    applySnap(e, s); toast('Stroke undone');
+    const s = undoRef.current.popTarget();
+    if (s) { redoRef.current.push(Game.stateOf(e)); applySnap(e, s); toast('Stroke undone'); return; }
+    if (sceneSwapRef.current.undo(e)) { undoRef.current.clear(); redoRef.current.clear(); syncDeserializedScene(e); toast('Scene load undone'); return; }
+    toast('Nothing to undo');
   };
   const redo = () => {
     const e = engine(); if (!e) return;
-    const s = redoRef.current.popTarget(); if (!s) { toast('Nothing to redo'); return; }
-    undoRef.current.push(Game.stateOf(e));
-    applySnap(e, s); toast('Stroke redone');
+    const s = redoRef.current.popTarget();
+    if (s) { undoRef.current.push(Game.stateOf(e)); applySnap(e, s); toast('Stroke redone'); return; }
+    if (sceneSwapRef.current.redo(e)) { undoRef.current.clear(); redoRef.current.clear(); syncDeserializedScene(e); toast('Scene load redone'); return; }
+    toast('Nothing to redo');
   };
   const pickSubstance = (rec) => {
     if (coachStep === 0) setCoachStep(1); // coach: step 1 done by the real pick
@@ -1340,12 +1355,13 @@ export function MatterLab(props) {
     }
     return { x: Math.max(0, Math.min(e.cols - 1, Math.floor((ev.clientX - r.left) / r.width * e.cols))), y: Math.max(0, Math.min(e.rows - 1, Math.floor((ev.clientY - r.top) / r.height * e.rows))) };
   };
-  const paintAt = (g, opts = {}) => {
+  const brushForPointer = (pointerType = ptrRef.current?.pointerType || 'mouse', base = brush) => effectiveBrushRadius(base, touchLevelRef.current, pointerType);
+  const paintAt = (g, opts = {}, record = true) => {
     const e = engine(); if (!e) return;
     const dens = tool === 'spray' ? 0.22 : tool === 'dropper' ? 0.12 : 1;
-    const r = tool === 'dropper' ? 1 : brush;
+    const r = brushForPointer(ptrRef.current?.pointerType || 'mouse', tool === 'dropper' ? 1 : brush);
     e.paint(g.x, g.y, r, selId, { shape: tool === 'spray' ? 'circle' : shape, density: dens, ...opts });
-    if (e.recordFlightAction) e.recordFlightAction('paint', { tool, at: `${g.x},${g.y}`, id: selId });
+    if (record && e.recordFlightAction) e.recordFlightAction('paint', { tool, at: `${g.x},${g.y}`, id: selId });
   };
   const floodFill = (g) => {
     const e = engine(); if (!e) return;
@@ -1359,9 +1375,10 @@ export function MatterLab(props) {
       if (y > 0) stack.push([x, y - 1]); if (y < e.rows - 1) stack.push([x, y + 1]);
     }
   };
-  const drawShape = (a, b) => {
+  const drawShape = (a, b, pointerType = 'mouse') => {
     const e = engine(); if (!e) return;
-    const put = (x, y) => { if (x >= 0 && y >= 0 && x < e.cols && y < e.rows && e.objMap[y * e.cols + x] === 0) e.paint(x, y, Math.max(0, Math.floor(brush / 3)), selId, { shape: 'square' }); };
+    const shapeBrush = brushForPointer(pointerType, brush);
+    const put = (x, y) => { if (x >= 0 && y >= 0 && x < e.cols && y < e.rows && e.objMap[y * e.cols + x] === 0) e.paint(x, y, Math.max(0, Math.floor(shapeBrush / 3)), selId, { shape: 'square' }); };
     if (tool === 'line') { const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y), 1); for (let s = 0; s <= steps; s++) put(Math.round(a.x + (b.x - a.x) * s / steps), Math.round(a.y + (b.y - a.y) * s / steps)); }
     else if (tool === 'rect') { for (let y = Math.min(a.y, b.y); y <= Math.max(a.y, b.y); y++) for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x++) put(x, y); }
     else if (tool === 'circle') { const r = Math.hypot(b.x - a.x, b.y - a.y); for (let y = Math.floor(a.y - r); y <= a.y + r; y++) for (let x = Math.floor(a.x - r); x <= a.x + r; x++) if (Math.hypot(x - a.x, y - a.y) <= r) put(x, y); }
@@ -1391,14 +1408,15 @@ export function MatterLab(props) {
        active (synthetic events, some stylus drivers) — never let it abort
        the gesture. */
     try { canvasRef.current.setPointerCapture?.(ev.pointerId); } catch { /* pointer not capturable — gestures still work */ }
-    ptrMapRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, swallowed: false });
+    const pointerType = ev.pointerType || 'mouse';
+    ptrMapRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, swallowed: false, pointerType });
     const fingers = ptrMapRef.current.size;
     const now = performance.now();
     if (fingers === 2) {
       // second finger: pinch begins (or two-finger double-tap = redo)
       ptrRef.current = null; dragRef.current = null; dragCandRef.current = null;
       const lt = lastTapRef.current;
-      if (lt.fingers === 2 && now - lt.t < 350) {
+      if (isTouchDoubleTap(lt, { t: now, x: ev.clientX, y: ev.clientY, fingers: 2, pointerType }, pointerType === 'touch' ? touchLevelRef.current : DEFAULT_TOUCH_LEVEL)) {
         lastTapRef.current = { t: 0, x: 0, y: 0, fingers: 0 };
         for (const p of ptrMapRef.current.values()) p.swallowed = true;
         pinchRef.current = { swallowed: true };
@@ -1413,7 +1431,7 @@ export function MatterLab(props) {
     if (fingers > 2) return;
     // one finger: double-tap = undo (swallow this tap entirely)
     const lt = lastTapRef.current;
-    if (lt.fingers === 1 && now - lt.t < 350 && Math.hypot(ev.clientX - lt.x, ev.clientY - lt.y) < 48) {
+    if (isTouchDoubleTap(lt, { t: now, x: ev.clientX, y: ev.clientY, fingers: 1, pointerType }, pointerType === 'touch' ? touchLevelRef.current : DEFAULT_TOUCH_LEVEL)) {
       lastTapRef.current = { t: 0, x: 0, y: 0, fingers: 0 };
       ptrMapRef.current.get(ev.pointerId).swallowed = true;
       undo();
@@ -1421,12 +1439,12 @@ export function MatterLab(props) {
     }
     const g = toGrid(ev); if (!g) return;
     const e = engine();
-    ptrRef.current = { start: g, cur: g, last: g, t0: performance.now(), moved: false, tapObj: null, lp: null, fingers: 1 };
+    ptrRef.current = { start: g, cur: g, last: g, t0: performance.now(), moved: false, tapObj: null, lp: null, fingers: 1, pointerType };
     if (['paint', 'spray', 'eraser', 'heat', 'cool', 'fill', 'line', 'rect', 'circle', 'clone', 'dropper', 'stir'].includes(tool)) snapshot();
-    if (tool === 'paint' || tool === 'spray' || tool === 'dropper') { paintAt(g); logStep({ t: 'paint', key: selRec.key, x: g.x, y: g.y, r: brush }); }
-    else if (tool === 'eraser') e.erase(g.x, g.y, brush);
-    else if (tool === 'heat') { e.heatBrush(g.x, g.y, brush, 25); logStep({ t: 'heat', x: g.x, y: g.y, r: brush }); }
-    else if (tool === 'cool') { e.coolBrush(g.x, g.y, brush, 25); logStep({ t: 'cool', x: g.x, y: g.y, r: brush }); }
+    if (tool === 'paint' || tool === 'spray' || tool === 'dropper') { paintAt(g); logStep({ t: 'paint', key: selRec.key, x: g.x, y: g.y, r: brushForPointer(pointerType) }); }
+    else if (tool === 'eraser') e.erase(g.x, g.y, brushForPointer(pointerType));
+    else if (tool === 'heat') { e.heatBrush(g.x, g.y, brushForPointer(pointerType), 25); logStep({ t: 'heat', x: g.x, y: g.y, r: brushForPointer(pointerType) }); }
+    else if (tool === 'cool') { e.coolBrush(g.x, g.y, brushForPointer(pointerType), 25); logStep({ t: 'cool', x: g.x, y: g.y, r: brushForPointer(pointerType) }); }
     else if (tool === 'fill') floodFill(g);
     else if (tool === 'spark') { e.sparkAt(g.x, g.y); logStep({ t: 'spark', x: g.x, y: g.y }); }
     else if (tool === 'inspect') { const info = e.inspect(g.x, g.y); const oid = e.objectsAt(g.x, g.y); let extra = ''; if (oid) { const o = e.getObject(oid); if (o && o.kind === 'cylinder') { let c = 0; (o.interior || []).forEach((i) => { if (e.el[i]) c++; }); extra = `Cylinder contents: ${c} cells (graduations on the glass).`; } } setInspectInfo(info ? { ...info, extra } : { name: 'Empty', temp: 20, ph: null, state: 'empty', hints: [], extra }); }
@@ -1484,12 +1502,18 @@ export function MatterLab(props) {
       }
       sf.lastMoveT = tNow;
     }
-    if (tool === 'paint' || tool === 'spray' || tool === 'dropper') paintAt(g);
-    else if (tool === 'eraser') e.erase(g.x, g.y, brush);
-    else if (tool === 'heat') e.heatBrush(g.x, g.y, brush, 25);
-    else if (tool === 'cool') e.coolBrush(g.x, g.y, brush, 25);
+    const strokePoints = p.pointerType === 'touch' && TOUCH_STROKE_TOOLS.has(tool)
+      ? interpolateTouchStroke(p.last, g, touchLevelRef.current, touchStrokePointBudget(brushForPointer(p.pointerType, tool === 'dropper' ? 1 : brush)))
+      : [g];
+    if (tool === 'paint' || tool === 'spray' || tool === 'dropper') {
+      for (const point of strokePoints) paintAt(point, {}, false);
+      if (strokePoints.length && e.recordFlightAction) e.recordFlightAction('paint', { tool, at: `${g.x},${g.y}`, id: selId });
+    }
+    else if (tool === 'eraser') { const radius = brushForPointer(p.pointerType); for (const point of strokePoints) e.erase(point.x, point.y, radius); }
+    else if (tool === 'heat') { const radius = brushForPointer(p.pointerType); for (const point of strokePoints) e.heatBrush(point.x, point.y, radius, 25); }
+    else if (tool === 'cool') { const radius = brushForPointer(p.pointerType); for (const point of strokePoints) e.coolBrush(point.x, point.y, radius, 25); }
     else if (tool === 'wind') { e.windX = Math.max(-3, Math.min(3, dx * 0.4)); e.windY = Math.max(-3, Math.min(3, dy * 0.4)); }
-    else if (tool === 'stir') { e.stir(g.x, g.y, brush); if (dx || dy) e.poke(g.x, g.y, brush, dx, dy); }
+    else if (tool === 'stir') { e.stir(g.x, g.y, brushForPointer(p.pointerType)); if (dx || dy) e.poke(g.x, g.y, brushForPointer(p.pointerType), dx, dy); }
     else if (tool === 'interact' && dragCandRef.current) {
       /* W32U-5 R2: drag-move — track the cell delta as a ghost; the object
          itself only moves on pointerup (moveObjectTo). p.moved suppresses
@@ -1510,7 +1534,7 @@ export function MatterLab(props) {
       if (ptrMapRef.current.size === 0) {
         // only a SHORT, near-motionless two-finger touch counts as a tap
         // (a real pinch-zoom must not arm the redo double-tap)
-        if (!pinchRef.current.swallowed && performance.now() - pinchRef.current.t0 < 300 && Math.abs(viewRef.current.z - pinchRef.current.z0) < 0.05) lastTapRef.current = { t: performance.now(), x: ev.clientX, y: ev.clientY, fingers: 2 };
+        if (!pinchRef.current.swallowed && performance.now() - pinchRef.current.t0 < 300 && Math.abs(viewRef.current.z - pinchRef.current.z0) < 0.05) lastTapRef.current = { t: performance.now(), x: ev.clientX, y: ev.clientY, fingers: 2, pointerType: rec?.pointerType || ev.pointerType || 'touch' };
         pinchRef.current = null;
       }
       ptrRef.current = null;
@@ -1518,7 +1542,7 @@ export function MatterLab(props) {
     }
     if (rec && rec.swallowed) { ptrRef.current = null; return; } // double-tap undo already fired on the way down
     const p = ptrRef.current; ptrRef.current = null; if (!p) return;
-    if (!p.moved && performance.now() - p.t0 < 300) lastTapRef.current = { t: performance.now(), x: ev.clientX, y: ev.clientY, fingers: 1 };
+    if (!p.moved && performance.now() - p.t0 < 300) lastTapRef.current = { t: performance.now(), x: ev.clientX, y: ev.clientY, fingers: 1, pointerType: p.pointerType || ev.pointerType || 'mouse' };
     const g = toGrid(ev) || p.cur; const e = engine();
     /* W32U-5 R2: commit a drag-move before any tap behaviour */
     const dr = dragRef.current; dragRef.current = null; dragCandRef.current = null;
@@ -1531,7 +1555,7 @@ export function MatterLab(props) {
         else { shakeCanvas(); toast('No clear space there'); }
       }
     }
-    else if ((tool === 'line' || tool === 'rect' || tool === 'circle') && p.start) { drawShape(p.start, g); logStep({ t: 'paint', key: selRec.key, x: g.x, y: g.y, r: brush }); }
+    else if ((tool === 'line' || tool === 'rect' || tool === 'circle') && p.start) { drawShape(p.start, g, p.pointerType); logStep({ t: 'paint', key: selRec.key, x: g.x, y: g.y, r: brushForPointer(p.pointerType) }); }
     else if (tool === 'clone' && !cloneRef.current && p.start) {
       const cells = []; const x0 = Math.min(p.start.x, g.x), x1 = Math.max(p.start.x, g.x), y0 = Math.min(p.start.y, g.y), y1 = Math.max(p.start.y, g.y);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * e.cols + x; if (e.el[i]) cells.push([x - x0, y - y0, e.el[i], e.temp[i]]); }
@@ -1635,6 +1659,7 @@ export function MatterLab(props) {
   const applyHeatRamp = (v) => { setHeatRamp(v); Game.setHeatRamp(v); };
   const applyFontScale = (v) => { setFontScale(v); Game.setFontScale(v); };
   const applyHaptics = (b) => { setHapticsOn(b); Game.setHaptics(b); };
+  const applyTouchLevel = (value) => { const level = normalizeTouchLevel(value); touchLevelRef.current = level; setTouchLevel(level); Game.setTouchLevel(level); toast(`${TOUCH_LEVELS[level].label} touch controls selected`); };
   /* UI-B coach marks: first lab entry only (the omni:sandlab:seen flag —
      the same flag the demo offer uses; finishing/skipping the tutorial
      sets it, per the P5 migration map it is already copied to
@@ -1706,21 +1731,65 @@ export function MatterLab(props) {
     }
     buildDemo(exp.setup, true);
   };
-  /* UI-B named SAVE SLOTS (matterlab:slots). Payloads are the existing
-     serialize() output — ML1/ML0 share codes keep working unchanged.
-     Legacy numeric slots were imported by Game.loadSlots() on first read. */
-  const persistSlots = (next) => { setSlots(next); Game.saveSlots(next); };
-  const saveSlot = () => {
-    const e = engine(); if (!e) return;
-    const name = slotName.trim() || `Scene ${slots.length + 1}`;
-    const seen = new Set(); for (let i = 0; i < e.el.length; i++) if (e.el[i]) seen.add(e.el[i]);
-    const slot = { id: 's' + Date.now().toString(36), name, at: Date.now(), data: e.serialize(), parts: e.stats().particles, subs: seen.size };
-    persistSlots([...slots, slot]); setSlotName('');
-    toast(`Saved “${name}”`);
+  /* UI-B named SAVE SLOTS (matterlab:slots). New saves are compact ML2
+     archives (version, summary + checksum); raw legacy slots are still read
+     and are migrated only when the user saves them again. */
+  const persistSlots = (next) => {
+    if (!Game.saveSlots(next)) { toast('Save failed — device storage is full. Export a scene file or remove an old save.'); return false; }
+    setSlots(next);
+    return true;
   };
-  const loadSlot = (slot) => { const e = engine(); if (!e || !slot) return; snapshot(); e.deserialize(slot.data); rebuildOff(e); setGridDims({ cols: e.cols, rows: e.rows }); toast(`Loaded “${slot.name}”`); };
-  const renameSlot = (slot) => { const n = window.prompt('Rename save slot', slot.name); if (n == null) return; const name = n.trim(); if (!name) return; persistSlots(slots.map((s) => (s.id === slot.id ? { ...s, name } : s))); };
-  const deleteSlot = (slot) => { persistSlots(slots.filter((s) => s.id !== slot.id)); toast(`Deleted “${slot.name}”`); };
+  const saveSlot = async () => {
+    const e = engine(); if (!e || saveBusyRef.current) return;
+    const name = Game.normalizeSaveSlotName(slotName, `Scene ${slots.length + 1}`);
+    const existing = slots.find((s) => Game.normalizeSaveSlotName(s.name, '').toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (!existing && slots.length >= Game.MAX_SAVE_SLOTS) { toast(`Save limit reached (${Game.MAX_SAVE_SLOTS}) — delete or rename an existing slot first`); return; }
+    const at = Date.now();
+    saveBusyRef.current = true;
+    setSaveBusy(true);
+    try {
+      const scene = e.serialize();
+      const data = await encodeSceneShareCode(scene, { name, createdAt: at });
+      const summary = summarizeScene(scene);
+      const slot = { id: existing?.id || `s${at.toString(36)}-${Math.random().toString(36).slice(2, 7)}`, name, at, data, parts: summary.particles, subs: summary.substances, objects: summary.objects, archiveVersion: 1 };
+      const upsert = Game.upsertSaveSlot(slots, slot);
+      if (!upsert.ok) { toast(upsert.reason === 'limit' ? `Save limit reached (${Game.MAX_SAVE_SLOTS}) — delete or rename an existing slot first` : 'Could not add that save slot'); return; }
+      if (persistSlots(upsert.slots)) { setSlotName(''); toast(upsert.updated ? `Updated “${name}”` : `Saved “${name}”`); }
+    } catch { toast('Could not package this scene for local storage'); }
+    finally { saveBusyRef.current = false; setSaveBusy(false); }
+  };
+  const loadSlot = async (slot) => {
+    const e = engine(); if (!e || !slot) return;
+    try {
+      const archive = typeof slot.data === 'string' ? await decodeSceneCode(slot.data) : { scene: slot.data, name: slot.name };
+      if (!isSceneData(archive.scene)) { toast('That save is not a valid Matter Lab scene'); return; }
+      if (!replaceSceneWithUndo(e, archive.scene)) { toast('That save could not be loaded'); return; }
+      toast(`Loaded “${archive.name || slot.name}”`);
+    } catch { toast(`Could not read “${slot.name}” — the save may be damaged`); }
+  };
+  const renameSlot = (slot) => {
+    const n = window.prompt('Rename save slot', slot.name);
+    if (n == null) return;
+    const name = Game.normalizeSaveSlotName(n, '');
+    if (!name) return;
+    persistSlots(slots.map((s) => (s.id === slot.id ? { ...s, name } : s)));
+  };
+  const deleteSlot = (slot) => { if (persistSlots(slots.filter((s) => s.id !== slot.id))) toast(`Deleted “${slot.name}”`); };
+  const shareSavedSlot = async (slot, native = false) => {
+    if (!slot) return;
+    try {
+      const archive = typeof slot.data === 'string' ? await decodeSceneCode(slot.data) : { scene: slot.data };
+      const code = typeof slot.data === 'string' && slot.data.startsWith('ML2.') ? slot.data : await encodeSceneShareCode(archive.scene, { name: slot.name, createdAt: slot.at });
+      setShareInput(code);
+      if (native && typeof navigator.share === 'function') {
+        try { await navigator.share({ title: `Matter Lab — ${slot.name}`, text: code }); markSceneShared(); toast(`Shared “${slot.name}”`); return; }
+        catch (err) { if (err && err.name === 'AbortError') { toast('Sharing cancelled'); return; } }
+      }
+      const copied = await copyText(code);
+      if (copied) { markSceneShared(); toast(`Share code for “${slot.name}” copied`); }
+      else toast('Copy failed — the share code is ready in the import box');
+    } catch { toast(`Could not package “${slot.name}” for sharing`); }
+  };
   const saveRecipe = (slot) => { const r = { ...recipes, [slot]: { at: Date.now(), steps: recipeRef.current } }; setRecipes(r); lsSet(LS.recipes, r); toast(`Recipe saved in slot ${slot + 1} (${recipeRef.current.length} steps)`); };
   const replayRecipe = (slot) => {
     const e = engine(); const r = recipes[slot]; if (!e || !r) return;
@@ -1740,14 +1809,67 @@ export function MatterLab(props) {
       } catch { /* step skipped */ }
     }, 60); // ~2x feel: dense steps, sim running
   };
-  const exportJson = () => { const e = engine(); if (e) dl(new Blob([JSON.stringify(e.serialize())], { type: 'application/json' }), 'matterlab-scene.json'); };
-  const validSceneShape = (data) => !!(data && typeof data.cols === 'number' && typeof data.rows === 'number' && data.cols >= 1 && data.rows >= 1 && data.cols <= 1024 && data.rows <= 1024 && data.cols * data.rows <= 200000 && (Array.isArray(data.el) || typeof data.el === 'string'));
-  const copyShareCode = async () => { const e = engine(); if (!e) return; try { const code = await encodeShareCode(e.serialize()); Game.setFlag('shared'); const d = Game.awardAchievement('first-share'); if (d) announceAch(d); if (await copyText(code)) toast('Share code copied'); else toast('Copy failed — code is in the import box'); setShareInput(code); } catch { toast('Could not build a share code'); } };
-  const importShareCode = async (codeStr) => { const e = engine(); if (!e) return false; try { const data = await decodeShareCode(codeStr); if (!validSceneShape(data)) { toast('That share code did not validate'); return false; } if (e.deserialize(data)) { toast('Scene imported'); return true; } toast('That share code did not validate'); return false; } catch { toast('That share code is not a Matter Lab scene'); return false; } };
+  const markSceneShared = () => { Game.setFlag('shared'); const d = Game.awardAchievement('first-share'); if (d) announceAch(d); };
+  const applyImportedArchive = (archive) => {
+    const e = engine();
+    if (!e || !archive || !isSceneData(archive.scene)) { toast('That file did not contain a valid Matter Lab scene'); return false; }
+    if (!replaceSceneWithUndo(e, archive.scene)) { toast('That scene could not be loaded'); return false; }
+    const title = archive.name && archive.name !== 'Imported scene' ? `“${archive.name}”` : 'scene';
+    toast(archive.legacy ? 'Scene imported · older format' : `Imported ${title} · archive verified`);
+    return true;
+  };
+  const exportJson = () => {
+    const e = engine(); if (!e) return;
+    try {
+      const name = normalizeSceneName(slotName, 'Matter Lab scene');
+      const file = serializeSceneFile(e.serialize(), { name });
+      const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'matter-lab-scene';
+      dl(new Blob([file], { type: 'application/vnd.matter-lab.scene+json' }), `${base}.mlscene`);
+      toast('Portable scene archive downloaded');
+    } catch { toast('Could not package this scene file'); }
+  };
+  const exportSlot = async (slot) => {
+    if (!slot) return;
+    try {
+      const archive = typeof slot.data === 'string' ? await decodeSceneCode(slot.data) : { scene: slot.data };
+      const file = serializeSceneFile(archive.scene, { name: slot.name, createdAt: slot.at });
+      const base = String(slot.name || 'matter-lab-scene').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'matter-lab-scene';
+      dl(new Blob([file], { type: 'application/vnd.matter-lab.scene+json' }), `${base}.mlscene`);
+      toast(`Exported “${slot.name}”`);
+    } catch { toast(`Could not export “${slot.name}”`); }
+  };
+  const copyShareCode = async () => shareCurrentScene(false);
+  const shareCurrentScene = async (native = false) => {
+    const e = engine(); if (!e) return false;
+    const name = normalizeSceneName(slotName, 'Matter Lab scene');
+    try {
+      const code = await encodeSceneShareCode(e.serialize(), { name });
+      setShareInput(code);
+      if (native && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        try { await navigator.share({ title: `Matter Lab — ${name}`, text: code }); markSceneShared(); toast('Scene shared'); return true; }
+        catch (err) { if (err && err.name === 'AbortError') { toast('Sharing cancelled'); return false; } }
+      }
+      const copied = await copyText(code);
+      if (copied) { markSceneShared(); toast('Share code copied'); return true; }
+      toast('Copy failed — the share code is ready in the import box');
+      return false;
+    } catch { toast('Could not build a share code'); return false; }
+  };
+  const importShareCode = async (codeStr) => {
+    try { const archive = await decodeSceneCode(codeStr); return applyImportedArchive(archive); }
+    catch { toast('That share code is invalid, damaged, or not a Matter Lab scene'); return false; }
+  };
+  const importJson = (file) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { toast('Scene file too large (max 8 MB)'); return; }
+    file.text().then((text) => {
+      try { applyImportedArchive(decodeSceneFileText(text)); }
+      catch { toast('That file is not a valid Matter Lab scene archive'); }
+    }).catch(() => toast('Could not read that scene file'));
+  };
   const doLookup = (aKey, bKey) => { try { const plain = decidePair(aKey, bKey, { mixed: 1, temp: 25, electrified: false, pressure: 0, ignited: false }); const hot = decidePair(aKey, bKey, { mixed: 1, temp: 300, electrified: true, pressure: 3, ignited: true }); const res = { plain, hot, aKey, bKey }; setLookupRes(res); return res; } catch (err) { toast('Lookup failed for that pair'); return null; } };
   const addCustom = () => { const name = cf.name.trim(); if (!name) { toast('Give your substance a name first'); return; } const lo = hexToInt(cf.colour); const def = { name, cls: cf.cls === 'powder' ? 'powder' : cf.cls, cat: 'special', col: [lo, lighten(cf.colour)], density: Number(cf.density), flammability: Number(cf.flammability), acidStrength: Number(cf.acidity), ph: Number(cf.ph), solubility: Number(cf.solubility), ...(cf.boil !== '' && Number.isFinite(Number(cf.boil)) ? { boilPoint: Number(cf.boil) } : {}) }; let rec = null; try { rec = registerCustomSubstance(def); } catch { rec = null; } if (!rec) { toast('That substance could not be added (name may already exist)'); return; } ensureCols(); const saved = lsGet(LS_CUSTOMS, []); lsSet(LS_CUSTOMS, [...(Array.isArray(saved) ? saved : []), def]); setCustomsVer((v) => v + 1); const full = BY_KEY.get(rec.key) || rec; if (full && full.id != null) { setSelId(full.id); pickSubstance(full); } Game.setFlag('custom'); { const d = Game.awardAchievement('first-custom'); if (d) announceAch(d); } toast(`Added ${name} — now selected`); };
   const removeCustom = (defObj) => { const saved = lsGet(LS_CUSTOMS, []); const kept = (Array.isArray(saved) ? saved : []).filter((d) => d !== defObj && JSON.stringify(d) !== JSON.stringify(defObj)); lsSet(LS_CUSTOMS, kept); setCustomsVer((v) => v + 1); toast('Removed \u2014 takes effect on next open'); };
-  const importJson = (f) => { if (!f) return; if (f.size > 8 * 1024 * 1024) { toast('Scene file too large (max 8 MB)'); return; } f.text().then((t) => { try { const data = JSON.parse(t); if (!data || data.cols > 1024 || data.rows > 1024 || data.cols * data.rows > 200000) { toast('Scene too large'); return; } const e = engine(); if (e && e.deserialize(data)) toast('Scene imported'); else toast('That scene file did not validate'); } catch { toast('That file is not a Matter Lab scene'); } }); };
   const exportPng = () => { const cv = canvasRef.current; if (cv) cv.toBlob((b) => { if (b) { dl(b, 'matterlab.png'); toast('PNG downloaded'); } }, 'image/png'); };
   const clearWorld = () => { const e = engine(); if (!e) return; if (e.stats().particles > 5000 && !window.confirm(`Clear ${e.stats().particles.toLocaleString()} particles?`)) return; snapshot(); e.clear(); if (e.recordFlightAction) e.recordFlightAction('clearWorld'); cloneRef.current = null; toast('World cleared'); };
 
@@ -2013,12 +2135,14 @@ export function MatterLab(props) {
       fsState: () => ({ real: !!document.fullscreenElement, fallback: fsFbRef.current }),
       /* W32U-4 additions */
       shareCode: () => 'ML0.' + b64urlEnc(new TextEncoder().encode(JSON.stringify(e.serialize()))),
-      importCode: (str) => { const doImp = (data) => { if (!validSceneShape(data)) return false; const ok = !!e.deserialize(data); if (ok) { try { rebuildOff(e); setGridDims({ cols: e.cols, rows: e.rows }); } catch { /* noop */ } } return ok; }; if (typeof str === 'string' && str.trim().startsWith('ML0.')) { try { const data = JSON.parse(new TextDecoder().decode(b64urlDec(str.trim().slice(4)))); return doImp(data); } catch { return false; } } return decodeShareCode(str).then(doImp).catch(() => false); },
+      importCode: async (str) => { try { const archive = await decodeSceneCode(str); if (!isSceneData(archive.scene)) return false; const ok = !!e.deserialize(archive.scene); if (ok) { try { rebuildOff(e); setGridDims({ cols: e.cols, rows: e.rows }); setParts(e.stats().particles); } catch { /* noop */ } } return ok; } catch { return false; } },
       setViewMode: (m) => { if (['normal', 'heat', 'pressure', 'flow'].includes(m)) setViewMode(m); },
       viewMode: () => viewModeRef.current,
       /* P4 + UI-B additions */
       game: () => ({ stars: Game.getStars(), totalStars: Game.totalStars(), discoveries: Game.namedDiscoveries(), discoveryCount: Game.discoveryCount(), namedTotal: NAMED_REACTIVE_COUNT, achievements: Game.getAchievements(), rxTotal: Game.getRxTotal(), daily: { key: Game.dateKey(), tpl: Game.dailyFor().id, state: Game.getDailyState(), status: dailyStatus }, slots: slots.map((s) => ({ id: s.id, name: s.name, at: s.at, parts: s.parts })) }),
-      deltaStats: () => ({ undoSteps: undoRef.current.length, redoSteps: redoRef.current.length, undoBytes: undoRef.current.totalBytes(), redoBytes: redoRef.current.totalBytes(), lastStepBytes: undoRef.current.lastBytes, lastFullBytes: undoRef.current.lastFullBytes }),
+      deltaStats: () => ({ undoSteps: undoRef.current.length, redoSteps: redoRef.current.length, undoBytes: undoRef.current.totalBytes(), redoBytes: redoRef.current.totalBytes(), sceneUndo: !!sceneSwapRef.current.before, sceneRedo: !!sceneSwapRef.current.after, lastStepBytes: undoRef.current.lastBytes, lastFullBytes: undoRef.current.lastFullBytes }),
+      touchState: () => ({ level: touchLevelRef.current, brush: brushRef.current, touchBrush: effectiveBrushRadius(brushRef.current, touchLevelRef.current, 'touch'), mouseBrush: effectiveBrushRadius(brushRef.current, touchLevelRef.current, 'mouse') }),
+      setTouchLevel: (level) => { applyTouchLevel(level); return touchLevelRef.current; },
       undoOnce: () => undo(), redoOnce: () => redo(),
       startExperiment: (id) => { const ex = MATTER_EXPERIMENTS.find((x) => x.id === id); if (ex) { buildExperiment(ex); return true; } return false; },
       expStatusNow: () => ({ active: expActiveRef.current, status: expStatus, setupTick: expSetupTickRef.current }),
@@ -2135,7 +2259,7 @@ export function MatterLab(props) {
   }
 
   return (
-    <div ref={rootRef} data-mlroot="1" data-fs={fontScale} style={{ display: 'flex', flexDirection: 'column', gap: 8, background: fsMode ? 'var(--bg)' : undefined, height: fsMode ? '100%' : undefined, ...(fsFb ? { position: 'fixed', top: 0, left: 0, right: 0, height: 'var(--ml-vh, 100dvh)', zIndex: 200, padding: 8, overflowY: 'auto' } : null) }}>
+    <div ref={rootRef} data-mlroot="1" data-fs={fontScale} data-touch-level={touchLevel} style={{ display: 'flex', flexDirection: 'column', gap: 8, background: fsMode ? 'var(--bg)' : undefined, height: fsMode ? '100%' : undefined, ...(fsFb ? { position: 'fixed', top: 0, left: 0, right: 0, height: 'var(--ml-vh, 100dvh)', zIndex: 200, padding: 8, overflowY: 'auto' } : null) }}>
       {/* UI-A top bar — Home, Undo/Redo, Pause, Speed, Menu. REDESIGN
           COMPLIANCE (brief pt.3): the top bar + dock are THE main-screen
           chrome in every mode, fullscreen included — the old side rail is
@@ -2241,6 +2365,8 @@ export function MatterLab(props) {
         <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedI} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} perf={{ device: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, applyCap: applyPerfCap, adaptive: { ...adaptiveStatus, setAuto: setAdaptiveAuto, setTier: selectAdaptiveTier } }} power={powerOn} setPower={applyPower} />
       </div>
 
+      {!sheet && !picker && !dataCard && !sideOpen && <TouchActionBar level={touchLevel} brush={brush} onBrushChange={setBrush} onUndo={undo} onRedo={redo} onOpenTouchSettings={() => openSheet('touch')} />}
+
       {/* selected-substance bar (opens the bottom tile panel) — shown in
           every mode now that the top bar/dock are the unified chrome */}
       {(
@@ -2316,13 +2442,27 @@ export function MatterLab(props) {
       {sheet && (
         <div className="sheet-bg" onClick={() => setSheet('')}>
           <div className="sheet" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '80vh', overflowY: 'auto', width: '100%' }}>
+            {sheet === 'touch' && (<>
+              <b>Mobile-first touch controls</b>
+              <p className="dim sm" style={{ lineHeight: 1.6, margin: '6px 0 10px' }}>One finger uses the selected tool. Two fingers pinch to zoom and pan; a short two-finger double-tap redoes, and a one-finger double-tap undoes. Choose how forgiving touch painting and gesture timing should feel.</p>
+              <div className="ml-touch-levels" role="group" aria-label="Touch precision level">
+                {Object.values(TOUCH_LEVELS).map((profile) => (
+                  <button key={profile.id} type="button" className={`btn ml-touch-level-card ${touchLevel === profile.id ? '' : 'ghost'}`} aria-pressed={touchLevel === profile.id} onClick={() => applyTouchLevel(profile.id)}>
+                    <span className="ml-touch-level-head"><b>{profile.label}</b>{touchLevel === profile.id && <span className="ml-touch-selected">Selected</span>}</span>
+                    <span className="sm">{profile.description}</span>
+                    <span className="dim sm">Brush ×{profile.brushScale} · tap window {profile.doubleTapMs} ms · stroke spacing {profile.strokeSpacing} cells</span>
+                  </button>
+                ))}
+              </div>
+              <p className="dim sm" style={{ lineHeight: 1.6 }}>Touch levels affect finger input only. Mouse and pen keep the exact brush radius you set. The quick bar keeps undo/redo and brush sizing within thumb reach.</p>
+            </>)}
             {sheet === 'help' && (<>
               <b>How to play</b>
               <p className="sm" style={{ lineHeight: 1.6 }}>Paint any of the {SUBSTANCE_COUNT} substances, place Lab Gear (beakers, burners, batteries, thermometers) into the world, heat, stir, tip vessels over and watch real-style reactions. Interact taps cycle a burner or battery level; a second quick tap on a vessel tips it. Gyro tilts gravity for the whole world — vessels stay, contents pour honestly.</p>
               <p className="dim sm" style={{ lineHeight: 1.6 }}>A fun simulator inspired by real chemistry — not a safety guide. Real labs need goggles, gloves and a teacher.</p>
               <p className="dim sm" style={{ lineHeight: 1.7 }}><b>Keyboard shortcuts</b> (not while typing): Space = play/pause · [ / ] = brush size down/up · 1–9 = quick tools · F = fullscreen · M = cycle speed · P = substance picker · G = tools &amp; controls rail · Ctrl/Cmd+Z = undo · Ctrl/Cmd+Shift+Z or the Redo button = redo · H = home (when a home action is available).</p>
-              <p className="dim sm" style={{ lineHeight: 1.7 }}><b>Touch gestures</b> — one finger always paints with the current tool, exactly as before. <b>Pinch</b> with two fingers to zoom (up to 6×); drag with two fingers to pan; the % chip at the top-right resets. <b>Double-tap</b> (one finger, quick, without moving) = Undo; <b>double-tap with two fingers</b> = Redo — a pinch that actually zooms never triggers redo. With the <b>Spark</b> tool, a fast <b>downward flick</b> strikes a spark burst, like a match. With <b>Gyro</b> on and a vessel selected, <b>tilt the phone past 50°</b> and hold briefly to pour (tip) that vessel. Zoom, renderer (Auto/GL/2D), colour-blind-safe Heat colours, text size and the haptics toggle live in the side panel under View.</p>
-              <p className="dim sm" style={{ lineHeight: 1.7 }}><b>Progress</b> — Experiments award 1–3★ and unlock later experiments and scenes (the Sandbox is never locked). Every named reaction you trigger is recorded in the Discovery log. A new challenge arrives every day. Undo/redo keep the last 30 actions.</p>
+              <p className="dim sm" style={{ lineHeight: 1.7 }}><b>Touch gestures</b> — one finger uses the current tool. <b>Pinch</b> with two fingers to zoom (up to 6×); drag with two fingers to pan; the % chip resets. A quick, unmoved <b>one-finger double-tap</b> = Undo; <b>two-finger double-tap</b> = Redo — a pinch that actually zooms never triggers redo. The touch quick bar gives thumb-reachable Undo, Redo and brush sizing. Its Easy / Medium / Hard setting adjusts finger brush size, stroke-gap filling and double-tap timing; mouse and pen stay exact. With the <b>Spark</b> tool, a fast <b>downward flick</b> strikes a spark burst. With <b>Gyro</b> on and a vessel selected, tilt the phone past 50° and hold briefly to pour it.</p>
+              <p className="dim sm" style={{ lineHeight: 1.7 }}><b>Progress</b> — Experiments award 1–3★ and unlock later experiments and scenes (the Sandbox is never locked). Every named reaction you trigger is recorded in the Discovery log. A new challenge arrives every day. Undo/redo keep up to 30 compact brush states plus a full-scene load step.</p>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button className="btn sm" onClick={() => buildDemo('volcano')}>Demo: Volcano &amp; Lake</button>
                 <button className="btn sm" onClick={() => buildDemo('bench')}>Demo: The Bench</button>
@@ -2338,13 +2478,14 @@ export function MatterLab(props) {
                 <button className="btn ghost sm" onClick={() => openSheet('achievements')}>Achievements</button>
                 <button className="btn ghost sm" onClick={() => openSheet('recipes')}>Recipes ({recipeLen})</button>
                 <button className="btn ghost sm" onClick={openMessages}>Messages{unread > 0 ? ` (${unread} new)` : ''}</button>
+                <button className="btn ghost sm" onClick={() => openSheet('touch')}>Touch controls · {TOUCH_LEVELS[touchLevel].label}</button>
                 <button className="btn ghost sm" onClick={() => { setSheet(''); setSideOpen(true); }}>Tools &amp; controls panel</button>
                 <button className="btn ghost sm" onClick={() => { setSheet(''); toggleFs(); }}>{fsMode ? 'Exit fullscreen' : 'Fullscreen'}</button>
                 <button className="btn ghost sm" onClick={() => { setSheet(''); clearWorld(); }}>Clear world</button>
                 <button className="btn ghost sm" onClick={() => openSheet('help')}>Help — how to play</button>
                 <button className="btn ghost sm" onClick={() => { setSheet(''); startCoach(); }}>Replay the tutorial</button>
-                <button className="btn ghost sm" onClick={exportJson}>Export scene JSON</button>
-                <label className="btn ghost sm" style={{ textAlign: 'center', cursor: 'pointer' }}>Import scene JSON<input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => importJson(e.target.files?.[0])} /></label>
+                <button className="btn ghost sm" onClick={exportJson}>Export portable scene file</button>
+                <label className="btn ghost sm" style={{ textAlign: 'center', cursor: 'pointer' }}>Import scene file<input type="file" accept=".mlscene,.json,application/json,application/vnd.matter-lab.scene+json" style={{ display: 'none' }} onChange={(e) => { importJson(e.target.files?.[0]); e.target.value = ''; }} /></label>
                 <button className="btn ghost sm" onClick={exportPng}>Export PNG snapshot</button>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center' }} className="sm"><input type="checkbox" checked={muted} onChange={(e) => setMuted(e.target.checked)} /> Mute reaction cards</label>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center' }} className="sm"><input type="checkbox" checked={sfxEnabled()} onChange={(e) => { setSfxEnabled(e.target.checked); if (sndRef.current) sndRef.current.setEnabled(e.target.checked); }} /> Simulation &amp; app sounds (global)</label>
@@ -2358,31 +2499,39 @@ export function MatterLab(props) {
               <AchievementsPanel earned={achMap} />
             )}
             {sheet === 'scenes' && (<>
-              <b>Save slots (this device)</b>
-              <p className="dim sm" style={{ margin: '4px 0 0' }}>Named saves of the whole world. Payloads use the same format as share codes, so codes keep working. Older numbered slots were imported automatically.</p>
-              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-                <input value={slotName} onChange={(e) => setSlotName(e.target.value)} placeholder="Name this save (optional)" aria-label="Save slot name" style={{ flex: 1, minWidth: 0, padding: '8px 9px', borderRadius: 9, background: 'var(--s2)', border: '1px solid var(--line)', color: 'var(--fg)' }} />
-                <button className="btn sm" onClick={saveSlot}>Save current world</button>
+              <b>Scene saves · {slots.length} / {Game.MAX_SAVE_SLOTS} on this device</b>
+              <p className="dim sm" style={{ margin: '4px 0 0' }}>Named, compressed ML2 archives include world statistics and an integrity checksum. Saving an existing name updates that slot. Older numbered saves still load; use portable files or share codes to move scenes between devices.</p>
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                <input value={slotName} maxLength={Game.MAX_SAVE_SLOT_NAME_LENGTH} onChange={(e) => setSlotName(e.target.value)} placeholder="Name this save (optional)" aria-label="Save slot name" style={{ flex: '1 1 180px', minWidth: 0, padding: '8px 9px', borderRadius: 9, background: 'var(--s2)', border: '1px solid var(--line)', color: 'var(--fg)' }} />
+                <button className="btn sm" onClick={saveSlot} disabled={saveBusy}>{saveBusy ? 'Packing…' : 'Save current world'}</button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
                 {slots.length === 0 && <p className="dim sm" style={{ margin: 0 }}>No saves yet.</p>}
                 {slots.map((s) => (
-                  <div key={s.id} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span className="sm" style={{ flex: 1, minWidth: 140 }}>{s.name}<span className="dim"> · {new Date(s.at).toLocaleString()}{s.parts != null ? ` · ${Number(s.parts).toLocaleString()} particles` : ''}{s.subs != null ? ` · ${s.subs} substances` : ''}</span></span>
-                    <button className="btn ghost sm" onClick={() => loadSlot(s)}>Load</button>
-                    <button className="btn ghost sm" onClick={() => renameSlot(s)}>Rename</button>
-                    <button className="btn ghost sm" onClick={() => deleteSlot(s)}>Delete</button>
+                  <div key={s.id} className="ml-save-row">
+                    <span className="sm ml-save-meta"><b>{s.name}</b><span className="dim"> · {Number.isFinite(s.at) ? new Date(s.at).toLocaleString() : 'Imported save'}{s.parts != null ? ` · ${Number(s.parts).toLocaleString()} particles` : ''}{s.subs != null ? ` · ${s.subs} substances` : ''}{s.objects != null ? ` · ${s.objects} objects` : ''}</span></span>
+                    <div className="ml-save-actions">
+                      <button className="btn ghost sm" aria-label={`Load ${s.name}`} onClick={() => loadSlot(s)}>Load</button>
+                      <button className="btn ghost sm" aria-label={`Share ${s.name}`} onClick={() => shareSavedSlot(s, true)}>Share</button>
+                      <button className="btn ghost sm" aria-label={`Export ${s.name} as a scene file`} onClick={() => exportSlot(s)}>File</button>
+                      <button className="btn ghost sm" aria-label={`Rename ${s.name}`} onClick={() => renameSlot(s)}>Rename</button>
+                      <button className="btn ghost sm" aria-label={`Delete ${s.name}`} onClick={() => deleteSlot(s)}>Delete</button>
+                    </div>
                   </div>
                 ))}
               </div>
             </>)}
             {sheet === 'scenes' && (<>
-              <b style={{ display: 'block', marginTop: 16 }}>Share code</b>
+              <b style={{ display: 'block', marginTop: 16 }}>Portable share</b>
+              <p className="dim sm" style={{ margin: '4px 0 0' }}>ML2 codes verify a scene checksum before loading. ML0 and ML1 codes from older versions remain supported. Import creates an undo point so a mistaken load can be reversed.</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                <button className="btn ghost sm" onClick={copyShareCode}>Copy share code</button>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input value={shareInput} onChange={(e) => setShareInput(e.target.value)} placeholder="Paste a share code (ML1.… or ML0.…)" style={{ flex: 1, padding: '8px 9px', borderRadius: 9, background: 'var(--s2)', border: '1px solid var(--line)', color: 'var(--fg)' }} />
-                  <button className="btn ghost sm" onClick={() => importShareCode(shareInput)}>Import share code</button>
+                <div className="ml-share-actions">
+                  <button className="btn ghost sm" onClick={() => shareCurrentScene(true)}>Share scene…</button>
+                  <button className="btn ghost sm" onClick={copyShareCode}>Copy share code</button>
+                </div>
+                <div className="ml-share-import">
+                  <input value={shareInput} onChange={(e) => setShareInput(e.target.value)} placeholder="Paste an ML2, ML1 or ML0 code" aria-label="Share code to import" style={{ flex: 1, minWidth: 0, padding: '8px 9px', borderRadius: 9, background: 'var(--s2)', border: '1px solid var(--line)', color: 'var(--fg)' }} />
+                  <button className="btn ghost sm" onClick={() => importShareCode(shareInput)}>Import scene</button>
                 </div>
               </div>
               <b style={{ display: 'block', marginTop: 16 }}>Built-in showcase</b>

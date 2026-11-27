@@ -18,13 +18,13 @@ fallback). Repo: jackbhai/matter-lab (branch: arena/6fc3b1a3-matter-lab).
 | v10–v12 | New physics: combustion chemistry, pressure & wind | big systems |
 | v13–v15 | Renderer realism: lights, shadows, refraction, ground | renderer features |
 | v16–v20 | Realism: waves, fluids, Females, Materials labs | realism features |
-| v21–v25 | Low-end engine: adaptive tiers, GPU fallbacks, 2GB-safe | perf features |
-| v26–v30 | Mobile-first: touch UI, low-end profiles, 2GB-safe | mobile features |
-| v31–v35 | Save/share, challenges, sandbox modes | product features |
-| v36–v40 | Sound design: engine + reactions (fire, liquid, gas) | audio features |
-| v41–v45 | Accessibility: keyboard, screen reader, high contrast | a11y features |
-| v46–v50 | Polish: better tips, deep UX review, polish tests | polish (medium-large) |
-| v51–v60 | New physics: radiation, chaos & constants, more chemistry | 10 more physics systems |
+| v21–v23 | Low-end engine: adaptive tiers, GPU fallbacks, 2GB-safe | performance features |
+| v24–v25 | Mobile-first: touch controls and precision levels | mobile interaction |
+| v26–v28 | Portable scene archives, challenges, sandbox modes | product features |
+| v29–v30 | Sound design: engine + reactions (fire, liquid, gas) | audio features |
+| v31–v33 | Accessibility: keyboard, screen reader, high contrast | accessibility features |
+| v34–v35 | Polish: better tips, deep UX review, polish tests | polish (medium-large) |
+| v36–v40 | New physics: radiation, chaos & constants, more chemistry | 10 more physics systems |
 
 ---
 
@@ -181,23 +181,97 @@ Goal: 2GB RAM safe at quality=0. Files: gl-renderer.js, sandlab.jsx.
 Realism: 2GB phone runs at quality=0.
 Low-end: quality=0 on 2GB.
 
-## v24 — Mobile-first: Touch UI (new, MEDIUM)
+## v24 — Mobile-first: Touch UI (DONE — thumb-first controls and continuous strokes)
 
-Goal: touch-first controls. Files: sandlab.jsx (pointer events), styles.
-Realism: touch-optimized (2D cell safe).
-Low-end: all touch.
+**Intent:** Make the simulation practical to operate one-handed on phones without
+changing the engine grid, weakening the existing two-pointer camera gestures, or
+making mouse/stylus input feel less precise.
 
-## v25 — Mobile-first: Touch Levels (new, MEDIUM)
+**Integrated implementation:**
+- `src/ui/TouchActionBar.jsx` adds a narrow-screen/coarse-pointer toolbar for
+  Undo, Redo, brush decrement/increment, live brush size, and the active touch
+  profile. Buttons have accessible action names and 44 px minimum targets.
+- `src/tools/sandlab.jsx` wires the toolbar to the same undo/redo stacks and
+  brush state as the desktop UI. Touch pointer identity now travels through the
+  real paint, spray, dropper, erase, heat, cool, stir, and shape paths. Touch
+  strokes fill gaps between sparse pointer-move events; object interaction,
+  pinch zoom/pan, zoom reset, spark flick, and the two-finger redo gesture keep
+  their existing meanings.
+- `src/styles/panels.css` makes the action strip responsive, wraps it safely on
+  very narrow screens, and lays out the profile cards as a mobile sheet.
+- `src/core/touch-controls.js` owns tested, bounded input helpers, so the React
+  component and canvas use the same radius, interpolation, and tap rules.
 
-Goal: touch levels (easy, medium, hard). Files: sandlab.jsx.
-Realism: touch levels meaningful.
-Low-end: touch levels optimized.
+**Acceptance and tests:** `tests/touch-controls.test.js` proves accessible
+profile lookup, touch-only brush scaling, gap-filling endpoints, bounded work
+for large pointer jumps, and the single-/two-finger double-tap rules. Desktop
+mouse and pen keep their exact base brush radius. The existing pinch/pan and
+canvas paths remain the app's production handlers; no parallel demo controls.
 
-## v26 — Save/Share (new, MEDIUM)
+## v25 — Mobile-first: Touch Levels (DONE — Easy / Medium / Hard assistance)
 
-Goal: scene save/share. Files: game/game.js, sandlab.jsx.
-Realism: saves work.
-Low-end: saves on 2GB.
+**Intent:** Make touch difficulty a real, explainable precision setting rather
+than a label. The profile is persisted in `matterlab:touch-level`, exposed from
+the touch action strip and the main menu, and affects finger input only.
+
+**Profile contract (`src/core/touch-controls.js`):**
+- **Easy:** 1.30× brush radius, 0.62-cell interpolation spacing, 460 ms / 64 px
+  one- or two-finger double-tap window. Larger targets in world space and denser
+  gap filling forgive less accurate thumbs and less frequent touch events.
+- **Medium (default):** 1.00× radius, 1-cell spacing, 350 ms / 48 px gestures.
+- **Hard:** 0.72× radius, 1.45-cell spacing, 260 ms / 30 px gestures for more
+  exact placement and less accidental undo/redo. All radii remain clamped to
+  1–64 world cells. Stroke interpolation is capped at 256 points per move and
+  further scales down with brush footprint (minimum four points), protecting
+  low-memory phones from large-brush pointer bursts.
+- Profiles are read through `Game.getTouchLevel()` / `Game.setTouchLevel()`;
+  invalid or absent values safely resolve to Medium. Mouse and pen preserve the
+  requested radius and are not gap-interpolated by touch assistance.
+
+**Acceptance and tests:** unit coverage asserts profile ordering, persistence
+fallback, radius clamping, interpolation density/endpoints/work caps, and the
+profile-dependent tap thresholds. The touch settings sheet describes the real
+behavior and shows the active choice; the quick toolbar reflects it immediately.
+
+## v26 — Save/Share (DONE — portable, verified scene archives)
+
+**Intent:** Turn scene saving into a durable, inspectable, portable workflow
+while keeping the engine's established v1–v3 scene payloads unchanged.
+
+**Integrated implementation:**
+- `src/game/scene-archive.js` wraps a normal engine payload in a versioned
+  `matter-lab-scene` archive with a user-visible name, creation time, world
+  dimensions, particle/substance/object/body summary, and an FNV-1a integrity
+  checksum. New share codes use `ML2.G.` (gzip) or `ML2.R.` (raw fallback).
+  The decoder verifies the checksum and metadata before exposing the payload.
+- Imports enforce the engine's 1,024-dimension / 200,000-cell world ceiling,
+  8 MB decoded payload ceiling, bounded object/body lists, and bounded streaming
+  decompression. `.mlscene` JSON archives and legacy raw engine JSON are both
+  accepted; old `ML0.` and gzip `ML1.` share codes remain readable.
+- Named local saves store compressed ML2 codes (with a 12-slot cap); saving an
+  existing name updates that slot. Legacy numbered local slots remain
+  non-destructively readable. Each slot can load, use the platform share sheet
+  or clipboard, export a portable `.mlscene` file, rename, and delete.
+- `src/game/scene-history.js` provides a bounded, one-step `SceneSwapHistory`.
+  Current-world import validates before changing the engine; Undo/Redo then
+  restores the complete before/after scene, including grid dimensions, cells,
+  temperatures, lab gear and rigid bodies; ordinary brush strokes continue
+  using the existing compact delta-history path. Native Web Share is used where available, with a
+  clipboard/import-box fallback. Portable exports include metadata and a
+  checksum, while PNG export remains available.
+- `src/tools/sandlab.jsx`, `src/game/game.js`, `src/home/HomePage.jsx`'s
+  existing Continue route, and the scenes sheet all use the same live save
+  store and archive decoder; the package is not an isolated export utility.
+
+**Acceptance and tests:** `tests/scene-archive.test.js` covers package/file
+round trips, checksum and size rejection, ML0/ML1 compatibility, ML2 encoding,
+and a real MatterEngine serialize → share → decode → deserialize round trip.
+`tests/scene-history.test.js` proves full-world load Undo/Redo restores grid size,
+cells and gear, while `tests/game-storage.test.js` covers touch-profile
+settings, same-name slot updates, save caps, storage failures, name limits and
+non-destructive legacy-slot migration. A 2 GB device
+still uses the existing safe cell/particle budgets; archive handling adds hard
+input/decompression bounds and does not require a new renderer or large asset.
 
 ## v27 — Challenges (new, MEDIUM)
 
@@ -273,8 +347,12 @@ Lower risk, polish, QoL, UX improvements. No major new systems.
 
 ## Implementation rules
 
-1. One version = one BIG upgrade. Verified after each (`npm run build` passes,
-   build size check, PR per version per branch).
-2. Onver: one branch per version: branch = arena/6fc3b1a3-matter-lab (NO merge).
-3. After each: build + push + update PR + STOP.
-4. Between versions, nothing stays small — even small things get BIG versions.
+1. Each version is a substantial, integrated upgrade: app-wired behavior,
+   behavior-proving tests, and documented acceptance criteria—not dead modules.
+2. Adjacent versions may ship as one batch when the requested work spans them;
+   keep the implementation coherent and identify each version's scope here.
+3. Use the active Arena session branch and its branch policy; do not hard-code a
+   branch name into the roadmap or create a second branch outside that flow.
+4. Verify the complete test suite and production build, review the diff, then
+   push and open/update the requested PR. Stop for review when asked; do not
+   merge a review PR unless the user explicitly requests it.
