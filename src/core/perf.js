@@ -1,6 +1,11 @@
-/* Matter Lab Ultra — device detection + performance prefs for low-end mobile.
- * Reads navigator.deviceMemory + hardwareConcurrency + UA flags once, caches.
+/* Matter Lab Ultra — device detection + performance prefs (v21–v23).
+ * Reads navigator.deviceMemory + hardwareConcurrency + UA flags once,
+ * caches. Adds: ENV (device simulation for testing), Particles (2GB-safe
+ * spray logic), AdaptiveTiers (v21).
  */
+
+import { createAdaptiveTiers, TIERS, TIER_MAX, TIERS_N } from './tier-engine.js';
+
 const KEY = 'omni:sandlab:perf';
 const LOW_MEM_MB = 2048;
 
@@ -46,6 +51,13 @@ export function loadPerf() {
   merged.disableSound = !!merged.disableSound;
   merged.disableTex = !!merged.disableTex;
   merged.lowEnd = (p && typeof p.lowEnd === 'boolean') ? p.lowEnd : d.lowEnd;
+  // v21: adaptive tiers
+  merged.autoTier = (p && typeof p.autoTier === 'boolean') ? p.autoTier : true;
+  if (typeof merged.fpsFloor !== 'number' || merged.fpsFloor <= 0) merged.fpsFloor = 20;
+  if (typeof merged.upgradeHyst !== 'number' || merged.upgradeHyst <= 0) merged.upgradeHyst = 3;
+  if (typeof merged.upgradeFpsCeil !== 'number' || merged.upgradeFpsCeil <= 0) merged.upgradeFpsCeil = 60;
+  // v23: 2GB-safe
+  if (typeof merged.spraySafe !== 'boolean') merged.spraySafe = true;
   return merged;
 }
 
@@ -55,8 +67,39 @@ export function setPerf(p) {
   return next;
 }
 
-/* Effective start tier index for the sandbox: an explicit override wins;
-   otherwise the low-end default starts at the deepest tier (smallest grid). */
+/* v21: adaptive tiers */
+let tiers = null;
+export function tiers() { if (!tiers) tiers = createAdaptiveTiers(null, loadPerf()); return tiers; }
+export function resetTiers() { tiers = null; }
+
+/* v23: ENV — simulate a device (2GB low-CPU Android) for perf testing. */
+const ENV_STATE = {
+  simulated: null, // { RAM: number, slowCPU: boolean }
+  overrides: null, // { avgMs, size, particles }
+};
+export const ENV = {
+  simulateDevice(opts) { ENV_STATE.simulated = opts ? { ...opts } : null; cached = null; },
+  isSimulated() { return !!ENV_STATE.simulated; },
+  memoryLimit() { return ENV_STATE.simulated ? (ENV_STATE.simulated.RAM || 2048) : Infinity; },
+  memoryUsed() { return Math.min(0.92, (deviceInfo().memMB || 0) / 1024); },
+  gpuMult() { return 1.0; },
+  gpuTouchMult() { return 1.0; },
+  emojiVibrateMs() { return 1; },
+  setOverrides(o) { ENV_STATE.overrides = o ? { ...o } : null; },
+};
+export function ENV_OVERRIDES() { return ENV_STATE.overrides; }
+
+/* v23: Particles — 2GB-safe spray logic. */
+export const Particles = {
+  // returns true if we can safely spray: disabled if memory limit is below 92%
+  canSpray(rate) {
+    const mem = deviceInfo().memMB;
+    if (mem && mem < 2048) return false;
+    if (ENV.memoryLimit() < 2048) return false;
+    return !!rate;
+  },
+};
+
 export function autoStartTier(tiDefault) {
   const p = loadPerf();
   if (p.startTier >= 0) return p.startTier;

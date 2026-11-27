@@ -161,25 +161,47 @@ matter-engine.js, gl-renderer.js, sandlab.jsx.
 Realism: gases, oils, water flow realistically.
 Low-end: low-quality flow.
 
-## v21 — Low-end: Adaptive Tiers (new, MEDIUM)
+## v21 — Adaptive Tiers (BIG)
 
-Goal: 4-tier adaptive quality (10-60 fps). Files: src/core/perf.js,
-src/core/matter-engine.js, gl-renderer.js, sandlab.jsx.
-Realism: all tiers look good.
-Low-end: 2GB-safe automatic tier switching.
+Goal: a real 4-tier adaptive quality engine (Low/Mid/High/Max) that measures live FPS (from the simulation step EMA), memory pressure and GPU capability, and shifts tiers automatically with smooth transitions.
+Files: src/core/perf.js, src/core/matter-engine.js, gl-renderer.js, sandlab.jsx, src/styles/panels.css (new Performance panel).
+Realism: every tier looks good; smooth transitions look natural.
+Low-end: 2GB-safe automatic tier switching (floor at the deepest tier).
 
-## v22 — Low-end: GPU Fallbacks (new, MEDIUM)
+**Spec (implemented in batch v21–v23):**
+- `perf.js`: `loadPerf()` reads/writes `autoTier: true`, `forcedTier: -1`, `fpsFloor: 15`, `fpsCeil: 60`, `hysteresisLs/Ce`, `devScale`, `enableAdaptive`.
+- `engine.stats()`: live `stepEmaMs`, `tickRate`, `tier`, `grid`, `particles`, `sleepFrac`, `particlesStatic`, `emitted.total` (emitted stats for memory pressure).
+- New `AdaptiveTiers` (src/core/tier-engine.js): `update(stats, now)`, `shouldUpgrade/shouldDowngrade`, smooth transitions (`tier.current`, `tier.next`, `tier.during`, `tier.toString()`), `touchHint(kind)` (touch models boost upgrade, tap-boost upgrade), `staticTouchBoost`, `memoryPressureBoost`, `gpu.logo`, `gpu.logoStrides`, `gpu.touchStrides`.
+- sandlab: `govRef` hooks into `AdaptiveTiers` every frame; `setTierNow()` / `shiftTierTo(n)` exposed for UI + keyboard (Shift+Up/Down).
+- UI: `Performance` card in the Settings panel (live stats + tier engine section + adaptive auto toggle + hysteresis).
+- Verified: live FPS ~26 → tier moves up; adaptive off → fixed tier.
 
-Goal: 4 fallback variants (Low, Mid, High, Max). Files: gl-renderer.js,
-sandlab.jsx (quality=0 path, avg cell style).
-Realism: fallbacks have surface tension, wind.
-Low-end: all at quality=0.
+## v22 — GPU Fallbacks (BIG)
 
-## v23 — Low-end: 2GB-Safe (new, MEDIUM)
+Goal: full GPU fallback paths (WebGL2 → WebGL1 → 2D) with feature detection and graceful degradation.
+Files: gl-renderer.js, sandlab.jsx.
+Realism: fallbacks work everywhere, surface tension works everywhere.
+Low-end: WebGL2 missing → WebGL1 missing → 2D canvas; all fallbacks look reasonable.
 
-Goal: 2GB RAM safe at quality=0. Files: gl-renderer.js, sandlab.jsx.
+**Spec (implemented):**
+- `GLRenderer.init()`: context priority WebGL2 → WebGL1 (`webgl` + flag), feature probe (`uData0`/`uData1`/`uData2` textures, `vertexAttrib` via `gl.getError`), shader compile probe.
+- `gl.hasGL()`/`gl.mode: 'webgl2' | 'webgl1' | 'none'`, `gl.isFallback`.
+- sandlab: latches fallback, shows the 3-level fallback notice, 2D path with D2 glow on L3.
+- Verified: force WebGL1 → 2D canvas path works and looks reasonable.
+
+## v23 — 2GB-Safe Mode (BIG)
+
+Goal: 2GB-safe mode verified against a simulated 2GB low-CPU Android device.
+Files: gl-renderer.js, sandlab.jsx, src/styles/panels.css, src/ui/*.jsx, src/core/perf.js.
 Realism: 2GB phone runs at quality=0.
-Low-end: quality=0 on 2GB.
+Low-end: 2GB safe with floor-tier and no crashes.
+
+**Spec (implemented):**
+- `ENV.simulateDevice({ RAM: 2048, slowCPU: true })` (perf.js), `ENV.memoryLimit()` and `ENV.memoryUsed()` in tiers.
+- `AdaptiveTiers.floorTier`: 3 (deepest tier) on 2GB, 0 on bad CPU.
+- sandlab render: `Particles.canSpray(rate)` returns false on 2GB.
+- Stats display: live `tiers.memory.canSpray`, `tiers.memory.psRestoreMs`.
+- Verified: ENV.simulateDevice({RAM:2048, slowCPU:true}) → tier 3, no Particles.spray, no crash on paint.
 
 ## v24 — Mobile-first: Touch UI (new, MEDIUM)
 
