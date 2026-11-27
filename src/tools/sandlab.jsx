@@ -8,7 +8,7 @@ import { SUBSTANCES, BY_KEY, CATS, SUBSTANCE_COUNT } from '../core/matter-elemen
 import { MatterEngine, GEAR, TIERS } from '../core/matter-engine';
 import { MatterSound } from '../core/matter-sound';
 import { enabled as sfxEnabled, setEnabled as setSfxEnabled, hapticFx } from '../core/sfx';
-import { loadPerf, deviceSummary, setPerf as setPerfStore, autoStartTier } from '../core/perf.js';
+import { loadPerf, deviceSummary, setPerf as setPerfStore, autoStartTier, scheduleRepaint } from '../core/perf.js';
 import { GLRenderer, buildGLTables } from '../render/gl-renderer';
 import { Card, Empty, toast } from '../ui/kit';
 import TopBar from '../ui/TopBar.jsx';
@@ -224,12 +224,26 @@ export function renderSceneThumbnail(sceneId, canvas) {
   } catch { return false; }
 }
 
+// --- window.__matterlab: diagnostics/testing surface (called on every frame) ---
+let __mlRepaintScheduled = false;
+export function wsDebug(e, cv) {
+  if (!e) return;
+  let o = null;
+  try { o = e.objMap ? e.objMap.reduce((a, v) => a + (v ? 1 : 0), 0) : 0; } catch { o = -1; }
+  try { const sel = e.sel && e.sel.id; var rv = { cv: !!cv, gl: !!(window.__matterlab && window.__matterlab.gfxFallback === false && cv), n: e.particles, i: o, br: window.__br, t: +new Date() }; } catch { var rv = { t: +new Date() }; }
+  try { rv.id = (window.__matterlab && window.__matterlab.lastMsg) || null; } catch { }
+  return rv;
+}
+
 export function MatterLab(props) {
   const launch = props && props.launch ? props.launch : undefined;
   const onHome = props && typeof props.onHome === 'function' ? props.onHome : null;
   const rootRef = useRef(null), boxRef = useRef(null), canvasRef = useRef(null);
   // true = the 2D fallback is showing (draw-call protection, keyboard, pointer)
   const glFallbackShown = useRef(false);
+  const repaintRafRef = useRef(0);
+  const repaintScheduledRef = useRef(false);
+  const repaintBlockedByHiddenTab = useRef(0);
   const engRef = useRef(null), offRef = useRef(null), imgRef = useRef(null);
   const sndRef = useRef(null);
   const rafRef = useRef(0), ptrRef = useRef(null);
@@ -503,6 +517,21 @@ export function MatterLab(props) {
     toast('Engine reset — scene restored');
   };
 
+  useEffect(() => {
+    const tick = () => {
+      repaintScheduledRef.current = false;
+      if (document.visibilityState === 'hidden') { repaintBlockedByHiddenTab.current++; return; }
+      const e = engine();
+      if (e && typeof e.recordFlightAction === 'function') e.recordFlightAction('repaint', {});
+      const rv = wsDebug(e, canvasRef.current);
+      if (rv) { try { const g = globalThis.__matterlab; if (g) { g.repaintRafRef = repaintRafRef.current; g.repaintScheduledRef = repaintScheduledRef.current; } } catch { /* noop */ } }
+    };
+    const loop = () => { tick(); repaintRafRef.current = requestAnimationFrame(loop); };
+    repaintRafRef.current = requestAnimationFrame(loop);
+    const onRepaint = () => { repaintScheduledRef.current = false; };
+    window.addEventListener('repainted', onRepaint);
+    return () => { try { cancelAnimationFrame(repaintRafRef.current); repaintRafRef.current = 0; } catch { /* noop */ } window.removeEventListener('repainted', onRepaint); };
+  });
   useEffect(() => {
     const w = boxRef.current ? boxRef.current.clientWidth : 360;
     const ti = autoStartTier(w >= 900 ? 0 : 1); // low-end devices start at the deepest tier (2 GB phones)
@@ -1239,6 +1268,7 @@ export function MatterLab(props) {
     const dens = tool === 'spray' ? 0.22 : tool === 'dropper' ? 0.12 : 1;
     const r = tool === 'dropper' ? 1 : brush;
     e.paint(g.x, g.y, r, selId, { shape: tool === 'spray' ? 'circle' : shape, density: dens, ...opts });
+    if (e.recordFlightAction) e.recordFlightAction('paint', { tool, at: `${g.x},${g.y}`, id: selId });
   };
   const floodFill = (g) => {
     const e = engine(); if (!e) return;
@@ -1642,7 +1672,7 @@ export function MatterLab(props) {
   const removeCustom = (defObj) => { const saved = lsGet(LS_CUSTOMS, []); const kept = (Array.isArray(saved) ? saved : []).filter((d) => d !== defObj && JSON.stringify(d) !== JSON.stringify(defObj)); lsSet(LS_CUSTOMS, kept); setCustomsVer((v) => v + 1); toast('Removed \u2014 takes effect on next open'); };
   const importJson = (f) => { if (!f) return; if (f.size > 8 * 1024 * 1024) { toast('Scene file too large (max 8 MB)'); return; } f.text().then((t) => { try { const data = JSON.parse(t); if (!data || data.cols > 1024 || data.rows > 1024 || data.cols * data.rows > 200000) { toast('Scene too large'); return; } const e = engine(); if (e && e.deserialize(data)) toast('Scene imported'); else toast('That scene file did not validate'); } catch { toast('That file is not a Matter Lab scene'); } }); };
   const exportPng = () => { const cv = canvasRef.current; if (cv) cv.toBlob((b) => { if (b) { dl(b, 'matterlab.png'); toast('PNG downloaded'); } }, 'image/png'); };
-  const clearWorld = () => { const e = engine(); if (!e) return; if (e.stats().particles > 5000 && !window.confirm(`Clear ${e.stats().particles.toLocaleString()} particles?`)) return; snapshot(); e.clear(); cloneRef.current = null; toast('World cleared'); };
+  const clearWorld = () => { const e = engine(); if (!e) return; if (e.stats().particles > 5000 && !window.confirm(`Clear ${e.stats().particles.toLocaleString()} particles?`)) return; snapshot(); e.clear(); if (e.recordFlightAction) e.recordFlightAction('clearWorld'); cloneRef.current = null; toast('World cleared'); };
 
   /* ---------------- fullscreen / gyro ----------------
      UI2: FULLSCREEN ON OPEN. The open tap is the user gesture — we attempt

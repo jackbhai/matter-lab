@@ -64,6 +64,13 @@ export function autoStartTier(tiDefault) {
   return (p.lowEndAuto && di.lowEnd) ? 4 : tiDefault;
 }
 
+let repaintScheduled = false;
+export function scheduleRepaint() {
+  if (repaintScheduled) return;
+  repaintScheduled = true;
+  try { if (globalThis.requestAnimationFrame) { const r = globalThis.requestAnimationFrame(() => { repaintScheduled = false; try { globalThis.dispatchEvent(new globalThis.Event('repainted')); } catch { /* noop */ } }); } } catch { /* noop */ }
+}
+
 export function deviceSummary() {
   const d = deviceInfo();
   const mem = d.memMB ? `~${d.memMB} MB RAM` : 'unknown RAM';

@@ -2705,6 +2705,20 @@ export class MatterEngine {
   }
 
   // ---- stats / inspect / scenes -----------------------------------------------------
+  /** Record an action so perf.js / the flight log can show what the agent did. */
+  recordFlightAction(a, details = {}) {
+    try {
+      const t = Date.now();
+      const entry = { t, action: a || "", grid: `${this.cols}x${this.rows}`, particles: this.particles, ...details };
+      if (this._flightLog == null) this._flightLog = [];
+      this._flightLog.push(entry);
+      if (this._flightLog.length > 200) this._flightLog.shift();
+      try { const g = globalThis.__matterlab; if (g) g.flightLog = this._flightLog; } catch { /* noop */ }
+      return entry;
+    } catch { /* noop */ }
+  }
+  getFlightLog() { return this._flightLog || []; }
+
   stats() {
     let tier = -1;
     for (let t = 0; t < TIERS.length; t++) if (TIERS[t].cols === this.cols && TIERS[t].rows === this.rows) tier = t;
