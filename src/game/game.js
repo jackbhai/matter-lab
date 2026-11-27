@@ -6,6 +6,8 @@
 import { BY_KEY } from '../core/matter-elements.js';
 import { CARDS } from '../core/matter-reactions.js';
 import { computeObjective, MATTER_EXPERIMENTS } from '../tools/sandlab-scenes.js';
+import { DAILY_POOL, WEEKLY_POOL, dailyFor, evaluateChallenge, measureChallengeWorld, weeklyFor, weeklyKey, dateKey, yesterdayKey } from './challenges.js';
+import { FIELD_KIT_CAPACITY, FIELD_KIT_STARTING_SUPPLY, normalizeSandboxMode } from './sandbox-modes.js';
 
 const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
@@ -23,6 +25,8 @@ export const K = {
   heatRamp: 'matterlab:heat-ramp',
   fontScale: 'matterlab:fontscale',
   touchLevel: 'matterlab:touch-level',
+  challengeLedger: 'matterlab:challenge-ledger',
+  sandbox: 'matterlab:sandbox-mode',
 };
 
 /* ---------------- progression: stars + unlocks ---------------- */
@@ -161,23 +165,145 @@ export function checkCountAchievements() {
   return out;
 }
 
-/* ---------------- daily challenge ---------------- */
-export const dateKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const yesterdayKey = () => { const d = new Date(); d.setDate(d.getDate() - 1); return dateKey(d); };
-const seedOf = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0); };
-/* Templates are checked against LIVE engine state (or, for rx5, the set of
-   distinct reaction cards genuinely triggered today in this lab session —
-   tracked by the caller, never backfilled). */
-export const DAILY_POOL = [
-  { id: 'boil200', name: 'Rolling Boil', text: 'Get 200+ water cells to 90°C or hotter at the same time.', check: (e) => { const wid = idOf('water'); let c = 0; for (let i = 0; i < e.el.length; i++) if (e.el[i] === wid && e.temp[i] >= 90) c++; return { done: c >= 200, detail: `${c} / 200 hot water cells` }; } },
-  { id: 'freeze50', name: 'Deep Freeze', text: 'Freeze water — have 50+ ice cells in the world at once.', check: (e) => { const c = countId(e, idOf('ice')); return { done: c >= 50, detail: `${c} / 50 ice cells` }; } },
-  { id: 'golden40', name: 'Golden Rain', text: 'Make lead iodide rain — 40+ lead-iodide cells in the world.', check: (e) => { const c = countId(e, idOf('lead-iodide')); return { done: c >= 40, detail: `${c} / 40 lead-iodide cells` }; } },
-  { id: 'steam100', name: 'Steam Room', text: 'Fill the lab with steam — 100+ steam cells at once.', check: (e) => { const c = countId(e, idOf('steam')); return { done: c >= 100, detail: `${c} / 100 steam cells` }; } },
-  { id: 'rx5', name: 'Five Reactions', text: 'Trigger 5 different named reactions today.', check: (e, ctx) => { const n = ctx && ctx.rxToday ? ctx.rxToday.size : 0; return { done: n >= 5, detail: `${n} / 5 different reactions today` }; } },
-];
-export const dailyFor = (key = dateKey()) => DAILY_POOL[seedOf('matterlab-daily:' + key) % DAILY_POOL.length];
-export const getDailyState = () => lsGet(K.daily, {}); // { [dateKey]: { done, at } }
-export function markDailyDone(key = dateKey()) { const all = getDailyState(); if (!all[key] || !all[key].done) { all[key] = { done: true, at: Date.now() }; lsSet(K.daily, all); return true; } return false; }
+/* ---------------- challenge board: daily + weekly, evidence + rewards --- */
+export { DAILY_POOL, WEEKLY_POOL, dailyFor, weeklyFor, weeklyKey, dateKey, yesterdayKey, measureChallengeWorld, evaluateChallenge };
+export const getDailyState = () => lsGet(K.daily, {}); // legacy-compatible { [dateKey]: { done, at, id } }
+const EMPTY_CHALLENGE_LEDGER = () => ({ version: 1, points: 0, completed: { daily: {}, weekly: {} }, activity: { daily: {}, weekly: {} } });
+const boundedMap = (value, limit) => {
+  const obj = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const keys = Object.keys(obj).sort().slice(-limit);
+  return Object.fromEntries(keys.map((key) => [key, obj[key]]));
+};
+export function getChallengeLedger() {
+  const raw = lsGet(K.challengeLedger, {});
+  const empty = EMPTY_CHALLENGE_LEDGER();
+  const completed = raw && raw.completed && typeof raw.completed === 'object' ? raw.completed : {};
+  const activity = raw && raw.activity && typeof raw.activity === 'object' ? raw.activity : {};
+  return {
+    version: 1,
+    points: Math.max(0, Number(raw && raw.points) || 0),
+    completed: {
+      daily: boundedMap(completed.daily, 400),
+      weekly: boundedMap(completed.weekly, 104),
+    },
+    activity: {
+      daily: boundedMap(activity.daily, 60),
+      weekly: boundedMap(activity.weekly, 52),
+    },
+    ...(!raw || typeof raw !== 'object' ? empty : {}),
+  };
+}
+const saveChallengeLedger = (ledger) => lsSet(K.challengeLedger, ledger);
+export function getChallengeActivity(day = dateKey()) {
+  const d = String(day);
+  const week = weeklyKey(d);
+  const ledger = getChallengeLedger();
+  return {
+    day: d,
+    week,
+    dailyReactions: new Set(Array.isArray(ledger.activity.daily[d]) ? ledger.activity.daily[d] : []),
+    weeklyReactions: new Set(Array.isArray(ledger.activity.weekly[week]) ? ledger.activity.weekly[week] : []),
+  };
+}
+/** Call only for a named reaction the engine genuinely fired. Duplicate card
+    keys do not rewrite storage or inflate either period's distinct count. */
+export function recordChallengeReaction(cardKey, day = dateKey()) {
+  const key = String(cardKey == null ? '' : cardKey).trim().slice(0, 160);
+  if (!key) return false;
+  const d = String(day), week = weeklyKey(d), ledger = getChallengeLedger();
+  const daily = new Set(Array.isArray(ledger.activity.daily[d]) ? ledger.activity.daily[d] : []);
+  const weekly = new Set(Array.isArray(ledger.activity.weekly[week]) ? ledger.activity.weekly[week] : []);
+  const changed = !daily.has(key) || !weekly.has(key);
+  if (!changed) return false;
+  daily.add(key); weekly.add(key);
+  ledger.activity.daily[d] = [...daily].slice(-512);
+  ledger.activity.weekly[week] = [...weekly].slice(-2048);
+  ledger.activity.daily = boundedMap(ledger.activity.daily, 60);
+  ledger.activity.weekly = boundedMap(ledger.activity.weekly, 52);
+  return saveChallengeLedger(ledger);
+}
+export function completeChallenge(period, periodKey, challengeId, at = Date.now(), reward = null) {
+  if (period !== 'daily' && period !== 'weekly') return false;
+  const key = String(periodKey || (period === 'daily' ? dateKey() : weeklyKey()));
+  const ledger = getChallengeLedger();
+  if (ledger.completed[period][key]) return false;
+  const defaultReward = period === 'daily' ? 25 : 100;
+  const points = Math.max(0, Math.floor(Number(reward) || defaultReward));
+  ledger.completed[period][key] = {
+    id: String(challengeId || ''),
+    at: Number.isFinite(at) ? at : Date.now(),
+    reward: points,
+  };
+  ledger.completed[period] = boundedMap(ledger.completed[period], period === 'daily' ? 400 : 104);
+  ledger.points += points;
+  return saveChallengeLedger(ledger);
+}
+export function markDailyDone(key = dateKey(), challengeId = dailyFor(key).id, at = Date.now()) {
+  const all = getDailyState();
+  if (all[key] && all[key].done) return false;
+  all[key] = { done: true, at: Number.isFinite(at) ? at : Date.now(), id: challengeId };
+  const stored = lsSet(K.daily, boundedMap(all, 400));
+  completeChallenge('daily', key, challengeId, at, dailyFor(key).reward);
+  return stored;
+}
+export function markWeeklyDone(key = weeklyKey(), challengeId = weeklyFor(key).id, at = Date.now()) {
+  return completeChallenge('weekly', key, challengeId, at, weeklyFor(key).reward);
+}
+function completionKeys() {
+  const ledger = getChallengeLedger();
+  const legacy = getDailyState();
+  return new Set([...Object.keys(ledger.completed.daily), ...Object.keys(legacy).filter((key) => legacy[key] && legacy[key].done)]);
+}
+export function dailyChallengeStreak(today = dateKey()) {
+  const completed = completionKeys();
+  let cursor = completed.has(today) ? today : (completed.has(yesterdayKey(today)) ? yesterdayKey(today) : null);
+  if (!cursor) return 0;
+  let streak = 0;
+  while (completed.has(cursor) && streak < 400) {
+    streak++;
+    const d = new Date(`${cursor}T12:00:00`);
+    d.setDate(d.getDate() - 1);
+    cursor = dateKey(d);
+  }
+  return streak;
+}
+export function getChallengeSummary(now = new Date()) {
+  const today = dateKey(now), week = weeklyKey(now), ledger = getChallengeLedger(), daily = getDailyState();
+  return {
+    points: ledger.points,
+    streak: dailyChallengeStreak(today),
+    dailyDone: !!((daily[today] && daily[today].done) || ledger.completed.daily[today]),
+    weeklyDone: !!ledger.completed.weekly[week],
+    dailyCompleted: completionKeys().size,
+    weeklyCompleted: Object.keys(ledger.completed.weekly).length,
+    today, week,
+  };
+}
+
+/* ---------------- sandbox mode persistence ---------------------------- */
+export function getSandboxState() {
+  const raw = lsGet(K.sandbox, {});
+  const mode = normalizeSandboxMode(raw && raw.mode);
+  const stored = Number(raw && raw.credits);
+  const credits = Number.isFinite(stored)
+    ? Math.max(0, Math.min(FIELD_KIT_CAPACITY, Math.floor(stored)))
+    : FIELD_KIT_STARTING_SUPPLY;
+  return { mode, credits };
+}
+export function setSandboxState(value = {}) {
+  const current = getSandboxState();
+  const mode = normalizeSandboxMode(value.mode == null ? current.mode : value.mode);
+  // Field Kit stock belongs to the player, not the currently selected mode.
+  // Preserve it while visiting Creative/Moon/Jupiter so switching back cannot
+  // silently refill a depleted kit; only an explicit field-kit balance updates it.
+  const requested = Number(value.credits == null ? current.credits : value.credits);
+  const credits = mode !== 'field-kit'
+    ? current.credits
+    : Number.isFinite(requested)
+      ? Math.max(0, Math.min(FIELD_KIT_CAPACITY, Math.floor(requested)))
+      : FIELD_KIT_STARTING_SUPPLY;
+  return lsSet(K.sandbox, { mode, credits });
+}
 
 /* ---------------- named save slots ---------------- */
 export const MAX_SAVE_SLOTS = 12;

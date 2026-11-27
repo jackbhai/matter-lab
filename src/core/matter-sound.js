@@ -45,11 +45,12 @@
 import { MASTER_CEILING as MASTER, DUCK_FACTOR, enabled as sfxEnabled } from './sfx.js';
 import { onSettings } from './settings.js';
 import { profileForClass, bubbleParams, drawBubbleR, minnaertHz, modalParams, reverbWet, irSecondsFor, AMBIENT_WET } from './matter-acoustics.js';
+import { normalizeAudioListener, setPannerPosition, spatializeSource } from './spatial-audio.js';
 
 export const LOOP_CLASSES = ['boil', 'pour', 'pour-oil', 'pour-grain', 'fire', 'steam', 'fizz', 'acidfizz', 'sizzle', 'vent', 'bubble', 'lava', 'wind', 'lap', 'scrape'];
 export const ONESHOT_CLASSES = ['splash', 'dropsplash', 'bigsplash', 'boom', 'pop', 'zap', 'thunder', 'clink', 'clank', 'knock', 'shush', 'whoosh', 'rockbreak', 'ice', 'icebreak', 'glassbreak', 'chime', 'bubblepop', 'creak'];
 export const ALL_CLASSES = [...LOOP_CLASSES, ...ONESHOT_CLASSES];
-export const CENTERED = new Set(['boom', 'thunder', 'whoosh']);
+export const CENTERED = new Set(['thunder', 'whoosh']);
 export { reverbWet, irSecondsFor, AMBIENT_WET };
 
 /* SND3: scales pulled down slightly (~12 %) for dynamic range headroom. */
@@ -329,10 +330,12 @@ export class MatterSound {
     this.ctx = null; this.master = null;
     this.conv = null; this._irs = new Map(); this._loopWet = null;
     this.localEnabled = true;
-    this.loops = new Map();       // cls -> {gain, pan, target, amb, pitch, panCur, walk, phase, enc...}
-    this.voices = [];             // {cls, gain, at}
+    this.spatialEnabled = true;
+    this.listener = normalizeAudioListener();
+    this.loops = new Map();       // cls -> persistent source, 3D panner, filter and smoothed target
+    this.voices = [];             // {cls, gain, at, spatial}
     this.lastAt = new Map();
-    this.lastEvents = [];         // ring for tests {cls, intensity, kind, at}
+    this.lastEvents = [];         // ring for tests {cls, intensity, kind, position, spatial, at}
     this.amb = { fire: 0, water: 0, wind: 0, steam: 0 };
     this._duckAt = -10;
     this._poll = null; this._unsub = null;
@@ -344,6 +347,9 @@ export class MatterSound {
   }
   _gate() { if (!this.localEnabled) return false; try { return sfxEnabled(); } catch { return true; } }
   setEnabled(on) { this.localEnabled = !!on; if (!on) this._silenceLoops(); return this.localEnabled; }
+  setSpatialEnabled(on) { this.spatialEnabled = !!on; return this.spatialEnabled; }
+  setListener(view = {}) { this.listener = normalizeAudioListener(view); return { ...this.listener }; }
+  spatialFor(source, cls) { return this.spatialEnabled ? spatializeSource(source, this.listener, { centered: CENTERED.has(cls) }) : spatializeSource({}, this.listener); }
   enabled() { return this._gate(); }
   testGain(cls, i) { return testGain(cls, i); }
   /** Wet gain a voice with this enclosure would get (verify harness). */
@@ -385,7 +391,7 @@ export class MatterSound {
   }
   resume() { return !!this._ensure(); }
 
-  _log(cls, intensity, kind) { this.lastEvents.push({ cls, intensity: clamp01(intensity), kind, at: Date.now() }); if (this.lastEvents.length > 64) this.lastEvents.shift(); }
+  _log(cls, intensity, kind, position = null, spatial = null) { this.lastEvents.push({ cls, intensity: clamp01(intensity), kind, ...(position ? { position: { ...position } } : {}), ...(spatial ? { spatial: { ...spatial } } : {}), at: Date.now() }); if (this.lastEvents.length > 64) this.lastEvents.shift(); }
   _silenceLoops() {
     this.amb = { fire: 0, water: 0, wind: 0, steam: 0 };
     for (const L of this.loops.values()) { L.target = 0; L.amb = 0; try { L.gain.gain.setTargetAtTime(0, this.ctx ? this.ctx.currentTime : 0, 0.05); } catch { /* noop */ } }
@@ -396,14 +402,22 @@ export class MatterSound {
     const ctx = this.ctx;
     const gain = ctx.createGain(); gain.gain.value = 0;
     let dest = gain;
-    let pan = null;
-    if (typeof ctx.createStereoPanner === 'function') { pan = ctx.createStereoPanner(); pan.pan.value = 0; gain.connect(pan); dest = pan; }
+    let pan = null, panner = null;
+    if (typeof ctx.createPanner === 'function') {
+      try {
+        panner = ctx.createPanner(); panner.panningModel = 'HRTF'; panner.distanceModel = 'inverse';
+        panner.refDistance = 2; panner.maxDistance = 40; panner.rolloffFactor = 0.28;
+        gain.connect(panner); dest = panner;
+      } catch { panner = null; }
+    }
+    if (!panner && typeof ctx.createStereoPanner === 'function') { pan = ctx.createStereoPanner(); pan.pan.value = 0; gain.connect(pan); dest = pan; }
     dest.connect(this.master);
     if (this._loopWet) { try { dest.connect(this._loopWet); } catch { /* noop */ } } // beds: low fixed wet
-    const L = { gain, pan, target: 0, amb: 0, pitch: 0.5, panCur: 0, panTarget: 0, walk: 1, walk2: 1, phase: Math.random() * 6.28, nodes: [], filter: null, enc: DEFAULT_ENC, am: null, amLfo: null };
+    const L = { gain, pan, panner, target: 0, amb: 0, pitch: 0.5, panCur: 0, panTarget: 0, sourceX: null, sourceY: null, spatial: null, walk: 1, walk2: 1, phase: Math.random() * 6.28, nodes: [], filter: null, airFilter: null, enc: DEFAULT_ENC, am: null, amLfo: null };
     const spec = LOOP_FILTER[cls];
     if (spec) {
       const s = noiseSrc(ctx, true); const f = ctx.createBiquadFilter(); f.type = spec[0]; f.frequency.value = loopFreq(cls, 0.3, 0.5); f.Q.value = spec[1];
+      const air = ctx.createBiquadFilter(); air.type = 'lowpass'; air.frequency.value = 18000; air.Q.value = 0.0001;
       // amplitude modulation node: oil glug (slow) / gas flutter (fast) / scrape stick-slip
       let head = gain;
       if (cls === 'pour-oil' || cls === 'vent' || cls === 'steam' || cls === 'scrape') {
@@ -414,16 +428,17 @@ export class MatterSound {
         lfo.connect(lg).connect(am.gain); lfo.start(); L.nodes.push(lfo); L.amLfo = lfo;
       }
       const bed = ctx.createGain(); bed.gain.value = BED_GAIN[cls] != null ? BED_GAIN[cls] : 1;
-      s.connect(f).connect(bed).connect(head); s.start(); L.nodes.push(s); L.filter = f;
+      s.connect(f).connect(bed).connect(air).connect(head); s.start(); L.nodes.push(s); L.filter = f; L.airFilter = air;
     }
     this.loops.set(cls, L);
     return L;
   }
 
-  /** Continuous classes: setLoop(cls, intensity01, pitch01?, x01?, enc?). */
-  setLoop(cls, intensity, pitch, x, enc) {
+  /** Continuous classes: setLoop(cls, intensity01, pitch01?, x01?, enc?, y01?). */
+  setLoop(cls, intensity, pitch, x, enc, y) {
     const i = clamp01(intensity);
-    this._log(cls, i, 'loop');
+    const position = x == null ? null : { x, y: y == null ? 0.5 : y };
+    this._log(cls, i, 'loop', position, position ? this.spatialFor(position, cls) : null);
     if (!LOOP_CLASSES.includes(cls)) return;
     if (!this._gate()) { const L = this.loops.get(cls); if (L) L.target = 0; return; }
     if (i <= 0.003) { const L = this.loops.get(cls); if (L) L.target = 0; return; }
@@ -432,7 +447,7 @@ export class MatterSound {
     const L = this.loops.get(cls) || this._makeLoop(cls);
     L.target = i; if (pitch != null) L.pitch = clamp01(pitch);
     if (enc != null) L.enc = clampEnc(enc);
-    if (x != null) L.panTarget = Math.max(-0.8, Math.min(0.8, (clamp01(x) - 0.5) * 1.6));
+    if (x != null) { L.sourceX = clamp01(x); L.sourceY = clamp01(y == null ? 0.5 : y); L.spatial = this.spatialFor({ x: L.sourceX, y: L.sourceY, depth: L.enc }, cls); L.panTarget = L.spatial.pan; }
   }
 
   /** Ambient bed: setAmbient({fire, water, wind, steam}) — presence 0..1, UI-fed ~250 ms from real engine counters. */
@@ -445,48 +460,66 @@ export class MatterSound {
     }
   }
 
-  /** Engine-event adapter: accepts the engine's event object directly,
-   * including the parallel pass's `enc` field (ev.enc ?? 0.15). */
+  /** Engine-event adapter accepts v29 X/Y sources and all legacy X-only
+      events; old callers may continue passing the enclosure as argument five. */
   handleEvent(ev) {
     if (!ev) return false;
     const enc = clampEnc(ev.enc);
-    if (ev.type === 'loop') { this.setLoop(ev.cls, ev.intensity, ev.pitch, ev.x, enc); return true; }
-    return this.event(ev.cls, ev.intensity, ev.pitch, ev.x, enc);
+    if (ev.type === 'loop') { this.setLoop(ev.cls, ev.intensity, ev.pitch, ev.x, enc, ev.y); return true; }
+    return this.event(ev.cls, ev.intensity, ev.pitch, ev.x, enc, ev.y);
   }
 
-  /** One-shot classes: event(cls, intensity01, pitch01?, x01?, enc?) */
-  event(cls, intensity, pitch, x, enc) {
+  /** One-shot classes: event(cls, intensity01, pitch01?, x01?, enc?, y01?). */
+  event(cls, intensity, pitch, x, enc, y) {
     let i = clamp01(intensity);
     // splash size split — sound-module internal, no engine change
     if (cls === 'splash') cls = i < 0.25 ? 'dropsplash' : i >= 0.7 ? 'bigsplash' : 'splash';
-    this._log(cls, i, 'event');
+    const position = x == null ? null : { x, y: y == null ? 0.5 : y };
+    const spatial = this.spatialFor(position || {}, cls);
+    this._log(cls, i, 'event', position, spatial);
     if (!ONESHOT_CLASSES.includes(cls) || i <= 0) return false;
     if (!this._gate()) return false;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (now - (this.lastAt.get(cls) || -1e9) < (MIN_MS[cls] || 60)) return false;
     if (!this._ensure()) return false;
-    return this._play(cls, i, pitch, x, now, clampEnc(enc));
+    return this._play(cls, i, pitch, x, now, clampEnc(enc), y, spatial);
   }
 
-  _play(cls, i, pitch, x, now, enc = DEFAULT_ENC) {
+  _play(cls, i, pitch, x, now, enc = DEFAULT_ENC, y = null, spatial = null) {
     // pool cap ≤8: drop quietest (lowest priority) when full
     this.voices = this.voices.filter((v) => now - v.at < 1200);
     if (this.voices.length >= 8) { this.voices.sort((a, b) => a.gain - b.gain); this.voices.shift(); }
+    spatial = spatial || this.spatialFor(x == null ? {} : { x, y: y == null ? 0.5 : y, depth: enc }, cls);
     let g = testGain(cls, i);
-    // per-voice bus: bus → (pan) → master dry; bus → wet gain → convolver
+    // Each transient owns a tiny filter/panner chain. The voice pool still
+    // hard-caps at eight; source nodes retain the existing one-shot lifetime.
     const bus = this.ctx.createGain(); bus.gain.value = 1;
-    let dest = bus;
-    if (typeof this.ctx.createStereoPanner === 'function') {
-      const pan = this.ctx.createStereoPanner();
-      const pv = (x == null || CENTERED.has(cls)) ? 0 : Math.max(-0.8, Math.min(0.8, (clamp01(x) - 0.5) * 1.6));
-      pan.pan.value = pv;
-      if (!CENTERED.has(cls)) g *= 1 - 0.25 * Math.abs(pv); // mild distance attenuation
-      bus.connect(pan); pan.connect(this.master);
-    } else bus.connect(this.master);
+    let head = bus, airFilter = null, panner = null, stereoPan = null;
+    if (typeof this.ctx.createBiquadFilter === 'function') {
+      airFilter = this.ctx.createBiquadFilter(); airFilter.type = 'lowpass'; airFilter.frequency.value = spatial.cutoff; airFilter.Q.value = 0.0001;
+      bus.connect(airFilter); head = airFilter;
+    }
+    if (typeof this.ctx.createPanner === 'function') {
+      try {
+        panner = this.ctx.createPanner(); panner.panningModel = 'HRTF'; panner.distanceModel = 'inverse';
+        panner.refDistance = 2; panner.maxDistance = 40; panner.rolloffFactor = 0.28;
+        if (spatial.positioned) setPannerPosition(panner, spatial, this.ctx.currentTime);
+        head.connect(panner); panner.connect(this.master);
+      } catch { panner = null; }
+    }
+    if (!panner && typeof this.ctx.createStereoPanner === 'function') {
+      stereoPan = this.ctx.createStereoPanner();
+      stereoPan.pan.value = spatial.positioned ? spatial.pan : 0;
+      head.connect(stereoPan); stereoPan.connect(this.master);
+      if (spatial.positioned) g *= spatial.gain;
+    } else if (!panner) {
+      head.connect(this.master);
+      if (spatial.positioned) g *= spatial.gain;
+    }
     this._wetSend(bus, enc);
-    try { VOICES[cls](this.ctx, dest, this.ctx.currentTime + 0.01, g / MASTER * 0.9, i, pitch != null ? clamp01(pitch) : null, vary(), profileForClass(cls)); } catch { return false; }
+    try { VOICES[cls](this.ctx, bus, this.ctx.currentTime + 0.01, g / MASTER * 0.9, i, pitch != null ? clamp01(pitch) : null, vary(), profileForClass(cls)); } catch { return false; }
     if ((cls === 'boom' || cls === 'thunder' || cls === 'bigsplash' || cls === 'glassbreak') && i > 0.5) this._duckAt = this.ctx.currentTime;
-    this.voices.push({ cls, gain: g, at: now });
+    this.voices.push({ cls, gain: g, at: now, spatial: { ...spatial } });
     this.lastAt.set(cls, now);
     return true;
   }
@@ -505,10 +538,16 @@ export class MatterSound {
       // evolution: random-walk + slow LFO on cutoff and stochastic rate
       L.walk = Math.max(0.78, Math.min(1.28, L.walk + (Math.random() - 0.5) * 0.03));
       L.walk2 = Math.max(0.7, Math.min(1.4, L.walk2 + (Math.random() - 0.5) * 0.04));
+      const hasSource = this.spatialEnabled && L.sourceX != null;
+      L.spatial = hasSource ? spatializeSource({ x: L.sourceX, y: L.sourceY, depth: L.enc }, this.listener) : spatializeSource({}, this.listener);
+      L.panTarget = L.spatial.pan;
       L.panCur += (L.panTarget - L.panCur) * 0.06;
       if (L.pan) { try { L.pan.pan.setTargetAtTime(L.panCur, t, 0.12); } catch { /* noop */ } }
+      if (L.panner) setPannerPosition(L.panner, L.spatial, t);
+      if (L.airFilter) { try { L.airFilter.frequency.setTargetAtTime(L.spatial.cutoff, t, 0.18); } catch { /* noop */ } }
       const ambDriven = L.amb > L.target;
       let g = eff > 0.003 ? testGain(cls, eff) : 0;
+      if (hasSource && !L.panner) g *= L.spatial.gain;
       if (cls === 'lap' && eff > 0.003) g *= 0.62 + 0.38 * Math.sin(t * 0.55 + L.phase); // slow swell
       try { L.gain.gain.setTargetAtTime(g, t, ambDriven ? 0.55 : 0.09); } catch { /* noop */ }
       if (L.filter && eff > 0.003) {
@@ -542,7 +581,9 @@ export class MatterSound {
       if (cls === 'bubble' && gi > 0.35 && Math.random() < (gi - 0.35) * 14 * dt) {
         const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
         if (now - (this.lastAt.get('bubblepop') || -1e9) >= (MIN_MS.bubblepop || 45) && this.voices.length < 8) {
-          this._play('bubblepop', 0.3 + gi * 0.6, null, L.panCur != null ? L.panCur / 1.6 + 0.5 : null, now, L.enc);
+          const x = L.sourceX;
+          const y = L.sourceY;
+          this._play('bubblepop', 0.3 + gi * 0.6, null, x, now, L.enc, y, this.spatialFor(x == null ? {} : { x, y, depth: L.enc }, 'bubblepop'));
         }
       }
     }

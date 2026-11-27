@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as SandlabNS from '../tools/sandlab.jsx';
 import { CARDS, NAMED_REACTIVE_COUNT } from '../core/matter-reactions.js';
 import * as Game from '../game/game.js';
+import { SANDBOX_MODE_LIST, sandboxMode } from '../game/sandbox-modes.js';
+import ChallengeBoard from '../ui/ChallengeBoard.jsx';
 import { SUBSTANCE_COUNT } from '../core/matter-elements.js';
 import { GEAR } from '../core/matter-engine.js';
 import Logo from './Logo.jsx';
@@ -89,34 +91,37 @@ const HAS_SAVE = (() => {
   } catch { return false; }
 })();
 
-/* P4: progress surface — read live from the game layer's localStorage
-   records (stars, discoveries, daily state). Static at mount; honest
-   zeros for a fresh device. */
-const PROGRESS = (() => {
+/* Home progress is sampled on mount so returning from a lab run immediately
+   reflects its newly earned challenge points, streak, and completion stamps. */
+function readHomeProgress() {
   try {
     const tot = Game.totalStars();
     const disc = Game.discoveryCount();
-    const today = Game.dailyFor();
-    const yKey = Game.yesterdayKey();
     const tKey = Game.dateKey();
+    const yKey = Game.yesterdayKey();
     const ds = Game.getDailyState();
+    const sandbox = Game.getSandboxState();
     return {
       tot, disc,
       maxStars: EXPERIMENTS.length * 3,
-      todayName: today.name, todayText: today.text,
+      daily: Game.dailyFor(tKey),
+      weekly: Game.weeklyFor(tKey),
+      challengeSummary: Game.getChallengeSummary(new Date()),
       todayDone: !!(ds[tKey] && ds[tKey].done),
       yDone: !!(ds[yKey] && ds[yKey].done),
       fontScale: Game.getFontScale(),
+      selectedMode: sandboxMode(sandbox.mode),
     };
   } catch { return null; }
-})();
+}
 
 export default function HomePage({ onLaunch }) {
   const ticker = useMemo(() => [...TICKER_NAMES, ...TICKER_NAMES], []);
+  const progress = useMemo(() => readHomeProgress(), []);
   const firstExperiment = EXPERIMENTS[0];
 
   return (
-    <div className="ml-home" data-fs={PROGRESS ? PROGRESS.fontScale : 'm'}>
+    <div className="ml-home" data-fs={progress ? progress.fontScale : 'm'}>
       <header className="ml-topbar">
         <span className="ml-brand">
           <Logo size={30} />
@@ -190,11 +195,24 @@ export default function HomePage({ onLaunch }) {
           </article>
 
           <article className="ml-card">
-            <h3>Challenges</h3>
-            <p>Guided experiments with a goal to hit — set up the bench, run the reaction, watch for the result.</p>
+            <h3>Sandbox Modes</h3>
+            <p>Choose the physical rules and resource policy for this world. Switching modes preserves the scene; only gravity, ambient temperature, speed limits and the Field Kit budget change.</p>
+            <div className="ml-exp-list" aria-label="Available sandbox modes">
+              {SANDBOX_MODE_LIST.map((mode) => (
+                <button type="button" className="ml-exp-btn" key={mode.id} onClick={() => onLaunch({ mode: 'free', sandboxMode: mode.id })}>
+                  <span className="ml-exp-name">{mode.icon} {mode.name}{progress?.selectedMode.id === mode.id ? ' · last used' : ''}</span>
+                  <span className="ml-exp-goal">{mode.description}</span>
+                </button>
+              ))}
+            </div>
+          </article>
+
+          <article className="ml-card">
+            <h3>Experiments &amp; Challenges</h3>
+            <p>Run guided experiments or work toward a rotating daily and weekly objective, verified against the live world.</p>
             {EXPERIMENTS.length > 0 ? (
               <div className="ml-exp-list">
-                {EXPERIMENTS.map((ex) => { const locked = PROGRESS ? !Game.isExpUnlocked(ex.id, PROGRESS.tot) : false; const st = PROGRESS ? (Game.getStars()[ex.id] | 0) : 0; return (
+                {EXPERIMENTS.map((ex) => { const locked = progress ? !Game.isExpUnlocked(ex.id, progress.tot) : false; const st = progress ? (Game.getStars()[ex.id] | 0) : 0; return (
                   <button type="button" className="ml-exp-btn" key={ex.id} disabled={locked} onClick={() => onLaunch({ mode: 'experiments', experimentId: ex.id })}>
                     <span className="ml-exp-name">{locked ? `🔒 ${ex.name}` : ex.name} <span aria-label={`${st} of 3 stars`}>{'★'.repeat(st)}{'☆'.repeat(3 - st)}</span></span>
                     {ex.goal && <span className="ml-exp-goal">{locked ? `Locked — earn ${Game.expUnlockNeed(ex.id)}★ total to open.` : ex.goal}</span>}
@@ -207,12 +225,17 @@ export default function HomePage({ onLaunch }) {
             {firstExperiment && EXPERIMENTS.length > 1 && (
               <button type="button" className="ml-btn ml-btn-ghost" onClick={() => onLaunch({ mode: 'experiments', experimentId: firstExperiment.id })}>Start the first experiment</button>
             )}
-            {PROGRESS && (
+            {progress && (
               <div className="ml-progress" data-progress="1">
-                <span className="ml-progress-line">Experiments: <b>★ {PROGRESS.tot} / {PROGRESS.maxStars}</b> — stars unlock later experiments and scenes.</span>
-                <span className="ml-progress-line">Discovery log: <b>{fmt(PROGRESS.disc)} / {RX_N}</b> named reactions found in your worlds.</span>
-                <span className="ml-progress-line">Today&rsquo;s challenge — <b>{PROGRESS.todayName}</b>: {PROGRESS.todayText} <b>{PROGRESS.todayDone ? '✓ Done' : 'Not done yet'}</b> · Yesterday: <b>{PROGRESS.yDone ? '✓ done' : 'not done'}</b>.</span>
-                <button type="button" className="ml-btn ml-btn-ghost" onClick={() => onLaunch({ mode: 'free' })}>Play today&rsquo;s challenge in the lab</button>
+                <span className="ml-progress-line">Experiments: <b>★ {progress.tot} / {progress.maxStars}</b> — stars unlock later experiments and scenes.</span>
+                <span className="ml-progress-line">Discovery log: <b>{fmt(progress.disc)} / {RX_N}</b> named reactions found in your worlds.</span>
+                <span className="ml-progress-line">Challenge record: <b>{progress.challengeSummary.points} points</b> · <b>{progress.challengeSummary.streak}-day streak</b> · yesterday <b>{progress.yDone ? '✓ complete' : 'not complete'}</b>.</span>
+                <ChallengeBoard
+                  daily={{ challenge: progress.daily }}
+                  weekly={{ challenge: progress.weekly }}
+                  summary={progress.challengeSummary}
+                  onOpenLab={() => onLaunch({ mode: 'challenges' })}
+                />
               </div>
             )}
           </article>

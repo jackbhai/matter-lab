@@ -1,7 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MatterEngine } from '../src/core/matter-engine.js';
+import { BY_KEY } from '../src/core/matter-elements.js';
 import { SceneSwapHistory } from '../src/game/scene-history.js';
+
+test('already-built scenes can be recorded transactionally for full-scene Undo/Redo', () => {
+  const engine = new MatterEngine(32, 24);
+  engine.set(3, 4, 'water');
+  const before = engine.serialize();
+  engine.clear();
+  engine.set(18, 16, 'sand');
+  const after = engine.serialize();
+  const history = new SceneSwapHistory();
+  assert.equal(history.recordReplacement(before, after), true);
+  assert.equal(engine.get(18, 16), BY_KEY.get('sand').id);
+  assert.equal(history.undo(engine), true);
+  assert.equal(engine.get(3, 4), BY_KEY.get('water').id);
+  assert.equal(history.redo(engine), true);
+  assert.equal(engine.get(18, 16), BY_KEY.get('sand').id);
+});
 
 test('full-scene Undo/Redo restores world size, cells, and lab gear after a destructive import', () => {
   const engine = new MatterEngine(64, 48);

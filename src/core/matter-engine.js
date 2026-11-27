@@ -168,7 +168,7 @@ export class MatterEngine {
     this.lastLidPop = null;
     this.onReaction = () => {};
     this.onSound = null; // SND (W32U): UI assigns fn({type,cls,intensity,pitch?})
-    this._snd = null; this._inStep = false; this._prevElec = 0; this._sndFire = 0;
+    this._snd = null; this._inStep = false; this._prevElec = 0; this._sndFire = 0; this._lastBrushSoundAt = 0;
     this._resetSnd();
     this._rngState = 0x9e3779b9;
     // well-known ids (0 when the table lacks the key — engine stays safe)
@@ -190,13 +190,15 @@ export class MatterEngine {
   }
 
   _resetSnd() { this._snd = { boil:0, steam:0, fizz:0, acidfizz:0, sizzle:0, pour:0, pourOil:0, pourGrain:0, shush:0, splash:0, boomE:0, pop:0, zap:0, clink:0, clank:0, knock:0, rock:0, iceN:0, glassN:0, chime:0, creak:0, scrape:0, lava:0, vent:0, ventP:0, bubble:0, whoosh:0, whooshConf:false }; this._sndFire = 0; this._sndX = {}; this._sndEnc = {}; this._sndEncAll = [0, 0]; }
-  /* SND2: accumulate grid-normalised source x per class (positional audio). */
-  _sx(cls, i) { const s = this._sndX || (this._sndX = {}); const e = s[cls] || (s[cls] = [0, 0]); e[0] += (i % this.cols) / Math.max(1, this.cols - 1); e[1]++;
+  /* v29: accumulate grid-normalised source X/Y per class. One averaged
+     source per class/tick bounds event traffic while retaining real location. */
+  _sx(cls, i) { const s = this._sndX || (this._sndX = {}); const e = s[cls] || (s[cls] = [0, 0, 0]); e[0] += (i % this.cols) / Math.max(1, this.cols - 1); e[1] += ((i / this.cols) | 0) / Math.max(1, this.rows - 1); e[2]++;
     // E (HARDEN): enclosure estimate — sealed region 0.8, object interior 0.7, open air 0.15
     const enc = (this._region && this._region[i] >= 0) ? 0.8 : (this._inside && this._inside[i] >= 0) ? 0.7 : 0.15;
     const em = this._sndEnc || (this._sndEnc = {}); const ee = em[cls] || (em[cls] = [0, 0]); ee[0] += enc; ee[1]++;
     const all = this._sndEncAll || (this._sndEncAll = [0, 0]); all[0] += enc; all[1]++; }
-  _sxAvg(cls) { const e = this._sndX && this._sndX[cls]; return e && e[1] > 0 ? e[0] / e[1] : null; }
+  _sxAvg(cls) { const e = this._sndX && this._sndX[cls]; return e && e[2] > 0 ? e[0] / e[2] : null; }
+  _syAvg(cls) { const e = this._sndX && this._sndX[cls]; return e && e[2] > 0 ? e[1] / e[2] : null; }
   /* SND2: classify a destroyed/broken cell into break-sound counters. */
   _sndBreak(rec, i) {
     if (!this._snd || !rec) return;
@@ -213,32 +215,59 @@ export class MatterEngine {
     const windI = cl((Math.abs(this.windX) + Math.abs(this.windY)) / 2, 1);
     const loops = [['boil', cl(c.boil, 40)], ['steam', cl(c.steam, 40)], ['fizz', cl(c.fizz, 30)], ['acidfizz', cl(c.acidfizz, 30)], ['sizzle', cl(c.sizzle, 20)], ['fire', cl(this._sndFire, 220)], ['pour', cl(c.pour, 60)], ['pour-oil', cl(c.pourOil, 60)], ['pour-grain', cl(c.pourGrain, 60)], ['bubble', cl(c.bubble, 50)], ['vent', cl(c.vent, 20)], ['lava', cl(c.lava, 60)], ['wind', windI], ['scrape', cl(c.scrape, 3)]];
     const shots = [];
-    if (c.splash > 0) shots.push(['splash', cl(c.splash, 50), this._sxAvg('splash')]);
-    if (c.boomE > 0) shots.push(['boom', 1 - Math.exp(-c.boomE / 220), this._sxAvg('boom')]);
-    if (c.pop > 0) shots.push(['pop', cl(c.pop, 3), this._sxAvg('pop')]);
-    if (c.zap > 0) { const zi = cl(c.zap, 120); shots.push(['zap', zi, this._sxAvg('zap')]); if (zi >= 0.85) shots.push(['thunder', zi, null]); }
-    if (c.clink > 0) shots.push(['clink', cl(c.clink, 8), this._sxAvg('clink')]);
-    if (c.clank > 0) shots.push(['clank', cl(c.clank, 8), this._sxAvg('clank')]);
-    if (c.knock > 0) shots.push(['knock', cl(c.knock, 8), this._sxAvg('knock')]);
-    if (c.rock >= 6) shots.push(['rockbreak', cl(c.rock, 40), this._sxAvg('rockbreak')]);
-    if (c.iceN >= 10) shots.push(['icebreak', cl(c.iceN, 30), this._sxAvg('icebreak')]);
-    else if (c.iceN >= 2) shots.push(['ice', cl(c.iceN, 10), this._sxAvg('icebreak')]);
-    if (c.glassN >= 4) shots.push(['glassbreak', cl(c.glassN, 24), this._sxAvg('glassbreak')]);
-    else if (c.glassN > 0) shots.push(['clink', cl(c.glassN + 2, 8), this._sxAvg('glassbreak')]);
-    if (c.chime > 0) shots.push(['chime', cl(c.chime, 4), this._sxAvg('chime')]);
-    if (c.creak > 0) shots.push(['creak', cl(c.creak, 3), this._sxAvg('creak')]);
-    if (c.shush > 0) shots.push(['shush', cl(c.shush, 60), this._sxAvg('shush')]);
-    if (c.whoosh > 0) { shots.push(['whoosh', cl(c.whoosh, 60), null]); if (c.whooshConf) shots.push(['pop', 0.85, null]); }
+    const addShot = (cls, intensity, source) => shots.push([cls, intensity, source ? this._sxAvg(source) : null, source ? this._syAvg(source) : null]);
+    if (c.splash > 0) addShot('splash', cl(c.splash, 50), 'splash');
+    if (c.boomE > 0) addShot('boom', 1 - Math.exp(-c.boomE / 220), 'boom');
+    if (c.pop > 0) addShot('pop', cl(c.pop, 3), 'pop');
+    if (c.zap > 0) { const zi = cl(c.zap, 120); addShot('zap', zi, 'zap'); if (zi >= 0.85) addShot('thunder', zi, null); }
+    if (c.clink > 0) addShot('clink', cl(c.clink, 8), 'clink');
+    if (c.clank > 0) addShot('clank', cl(c.clank, 8), 'clank');
+    if (c.knock > 0) addShot('knock', cl(c.knock, 8), 'knock');
+    if (c.rock >= 6) addShot('rockbreak', cl(c.rock, 40), 'rockbreak');
+    if (c.iceN >= 10) addShot('icebreak', cl(c.iceN, 30), 'icebreak');
+    else if (c.iceN >= 2) addShot('ice', cl(c.iceN, 10), 'icebreak');
+    if (c.glassN >= 4) addShot('glassbreak', cl(c.glassN, 24), 'glassbreak');
+    else if (c.glassN > 0) addShot('clink', cl(c.glassN + 2, 8), 'glassbreak');
+    if (c.chime > 0) addShot('chime', cl(c.chime, 4), 'chime');
+    if (c.creak > 0) addShot('creak', cl(c.creak, 3), 'creak');
+    if (c.shush > 0) addShot('shush', cl(c.shush, 60), 'shush');
+    if (c.whoosh > 0) { addShot('whoosh', cl(c.whoosh, 60), null); if (c.whooshConf) addShot('pop', 0.85, null); }
     if (typeof this.onSound === 'function') {
       try {
         const encFor = (cls) => { const ee = this._sndEnc && this._sndEnc[cls]; if (ee && ee[1] > 0) return Math.max(0, Math.min(1, ee[0] / ee[1])); const all = this._sndEncAll; return all && all[1] > 0 ? Math.max(0, Math.min(1, all[0] / all[1])) : 0.15; };
-        for (const [cls, i] of loops) { const ev = { type: 'loop', cls, intensity: i, enc: encFor(cls) }; if (cls === 'vent') ev.pitch = Math.max(0, Math.min(1, c.ventP / 3)); const lx = this._sxAvg(cls === 'pour-oil' ? 'pourOil' : cls === 'pour-grain' ? 'pourGrain' : cls); if (lx != null) ev.x = lx; this.onSound(ev); }
-        for (const [cls, i, x] of shots) if (i > 0.01) this.onSound({ type: 'event', cls, intensity: i, enc: encFor(cls), ...(x != null ? { x } : {}) });
+        for (const [cls, i] of loops) { const ev = { type: 'loop', cls, intensity: i, enc: encFor(cls) }; if (cls === 'vent') ev.pitch = Math.max(0, Math.min(1, c.ventP / 3)); const source = cls === 'pour-oil' ? 'pourOil' : cls === 'pour-grain' ? 'pourGrain' : cls; const lx = this._sxAvg(source), ly = this._syAvg(source); if (lx != null) { ev.x = lx; ev.y = ly; } this.onSound(ev); }
+        for (const [cls, i, x, y] of shots) if (i > 0.01) this.onSound({ type: 'event', cls, intensity: i, enc: encFor(cls), ...(x != null ? { x, y } : {}) });
       } catch (e) {}
     }
     this._resetSnd();
   }
-  _sndEvt(cls, intensity, x, enc) { if (typeof this.onSound === 'function') { try { this.onSound({ type: 'event', cls, intensity, enc: enc != null ? enc : 0.15, ...(x != null ? { x } : {}) }); } catch (e) {} } }
+  _sndEvt(cls, intensity, x, enc, y) { if (typeof this.onSound === 'function') { try { this.onSound({ type: 'event', cls, intensity, enc: enc != null ? enc : 0.15, ...(x != null ? { x, ...(y != null ? { y } : {}) } : {}) }); } catch (e) {} } }
+  _brushSoundClass(rec, breaking = false) {
+    if (!rec) return 'shush';
+    const fams = rec.fams || [];
+    if (breaking) {
+      if (fams.includes('glass')) return 'glassbreak';
+      if (fams.includes('frozen')) return 'icebreak';
+      if (fams.includes('metal')) return 'clank';
+      if (fams.includes('wood')) return 'knock';
+      if (fams.includes('stone') || rec.profile === 'stone' || rec.profile === 'ceramic') return 'rockbreak';
+    }
+    if (rec.cls === 'liquid') return 'splash';
+    if (rec.cls === 'gas' || rec.cls === 'powder') return 'shush';
+    if (rec.cls === 'fire' || rec.cls === 'electric' || rec.cls === 'explosive') return 'pop';
+    if (fams.includes('metal')) return 'clank';
+    if (fams.includes('glass')) return 'clink';
+    if (fams.includes('wood')) return 'knock';
+    return breaking ? 'rockbreak' : 'clink';
+  }
+  _brushSound(cls, intensity, x, y) {
+    if (typeof this.onSound !== 'function') return false;
+    const now = Date.now();
+    if (now - this._lastBrushSoundAt < 90) return false;
+    this._lastBrushSoundAt = now;
+    this._sndEvt(cls, Math.max(0.08, Math.min(1, intensity)), x / Math.max(1, this.cols - 1), 0.15, y / Math.max(1, this.rows - 1));
+    return true;
+  }
 
   // ---- RNG (xorshift32) ----------------------------------------------------
   _rng() {
@@ -552,17 +581,42 @@ export class MatterEngine {
     const id = this._resolve(idOrKey);
     const density = opts.density != null ? opts.density : 1;
     const shape = opts.shape || 'circle';
+    let written = 0, changed = 0, soundX = 0, soundY = 0;
     this._brush(cx, cy, r, shape, (x, y, i) => {
       if (this.objMap[i] !== 0 || this.bodyMap[i] !== 0) return; // gear/body cells are managed elsewhere
       if (density < 1 && this._rng() >= density) return;
+      const oldId = this.el[i];
+      if (typeof opts.canPaintCell === 'function') {
+        try { if (!opts.canPaintCell({ x, y, i, oldId, id })) return; } catch { return; }
+      }
       if (!this._write(i, id, false)) return;
+      written++;
+      if (oldId !== id) { changed++; soundX += x; soundY += y; }
+      if (typeof opts.onPaintCell === 'function') { try { opts.onPaintCell({ x, y, i, oldId, id }); } catch { /* policy callbacks cannot break the engine */ } }
       if (opts.temp != null) this.temp[i] = opts.temp;
       else { const st = this._spawnTempFor(id); if (st != null) this.temp[i] = st; }
     });
+    if (changed > 0 && id !== 0 && opts.sound !== false) {
+      this._brushSound(this._brushSoundClass(SUBSTANCES[id]), Math.min(1, 0.18 + changed / 90), soundX / changed, soundY / changed);
+    }
+    return { written, changed };
   }
 
   erase(cx, cy, r) {
-    this._brush(cx, cy, r, 'circle', (x, y, i) => { if (this.objMap[i] === 0) this._write(i, 0, false); });
+    let removed = 0, soundX = 0, soundY = 0;
+    const bySound = new Map();
+    this._brush(cx, cy, r, 'circle', (x, y, i) => {
+      if (this.objMap[i] !== 0 || this.el[i] === 0) return;
+      const rec = SUBSTANCES[this.el[i]], cls = this._brushSoundClass(rec, true);
+      if (!this._write(i, 0, false)) return;
+      removed++; soundX += x; soundY += y;
+      bySound.set(cls, (bySound.get(cls) || 0) + 1);
+    });
+    if (removed > 0) {
+      const cls = [...bySound].sort((a, b) => b[1] - a[1])[0][0];
+      this._brushSound(cls, Math.min(1, 0.18 + removed / 90), soundX / removed, soundY / removed);
+    }
+    return { removed };
   }
 
   heatBrush(cx, cy, r, dTemp) {
@@ -2375,9 +2429,10 @@ export class MatterEngine {
     const interior = this._interiorFor(kind, x, y, stamp.w, stamp.h, set);
     for (let c = 0; c < interior.length; c++) this._inside[interior[c]] = objId;
     const obj = { id: objId, kind, cells: idxArr, stampIds: abs.map((a) => a[1]), anchor: { x, y }, level: opts.level || (kind === 'heater-coil' ? 3 : 1), interior, w: stamp.w, h: stamp.h, light: kind === 'benchlamp', locked: !!opts.locked, scale: sizeMul };
-    if (['beaker-s','beaker-m','beaker-l','flask','testtube','roundflask','cylinder','funnel','lid-s','lid-m','lid-l'].includes(kind)) this._sndEvt('clink', 0.5, x / Math.max(1, this.cols - 1));
-    else if (['battery','burner','benchlamp'].includes(kind) || kind.startsWith('electrode')) this._sndEvt('clank', 0.55, x / Math.max(1, this.cols - 1));
-    else if (kind === 'rack') this._sndEvt('knock', 0.55, x / Math.max(1, this.cols - 1));
+    const sx = x / Math.max(1, this.cols - 1), sy = y / Math.max(1, this.rows - 1);
+    if (['beaker-s','beaker-m','beaker-l','flask','testtube','roundflask','cylinder','funnel','lid-s','lid-m','lid-l'].includes(kind)) this._sndEvt('clink', 0.5, sx, 0.15, sy);
+    else if (['battery','burner','benchlamp'].includes(kind) || kind.startsWith('electrode')) this._sndEvt('clank', 0.55, sx, 0.15, sy);
+    else if (kind === 'rack') this._sndEvt('knock', 0.55, sx, 0.15, sy);
     this.objects.set(objId, obj);
     if (kind.startsWith('lid')) this._sealedDirty = true;
     return objId;

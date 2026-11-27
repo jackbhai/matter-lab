@@ -34,6 +34,8 @@ import * as Game from '../game/game.js';
 import { SceneSwapHistory } from '../game/scene-history.js';
 import { decodeSceneCode, decodeSceneFileText, encodeShareCode as encodeSceneShareCode, isSceneData, normalizeSceneName, serializeSceneFile, summarizeScene } from '../game/scene-archive.js';
 import { DEFAULT_TOUCH_LEVEL, TOUCH_LEVELS, effectiveBrushRadius, interpolateTouchStroke, isTouchDoubleTap, normalizeTouchLevel, touchStrokePointBudget } from '../core/touch-controls.js';
+import { SANDBOX_MODE_LIST, applySandboxPreset, createSandboxSession, gearCreditCost, normalizeSandboxMode, paintWithSandboxPolicy, placeGearWithSandboxPolicy, duplicateGearWithSandboxPolicy, sandboxGravityStrength, sandboxMode, sceneSupplyCost, setWithSandboxPolicy, speedAllowed } from '../game/sandbox-modes.js';
+import ChallengeBoard from '../ui/ChallengeBoard.jsx';
 import { DiscoveryPanel, AchievementsPanel, CoachMarks, COACH_STEPS } from '../ui/GamePanels.jsx';
 import { decidePair } from '../core/matter-verdicts';
 /* P0-REOPEN: in-app / WebView user agents — the presentation-failure class
@@ -256,6 +258,7 @@ export function MatterLab(props) {
   const sceneSwapRef = useRef(null);
   if (!sceneSwapRef.current) sceneSwapRef.current = new SceneSwapHistory();
   const cloneRef = useRef(null), firedRef = useRef(new Set()), recipeRef = useRef([]);
+  const recipeReplayRef = useRef(null);
   const gyroRef = useRef({ cand: -1, since: 0 });
   /* UI2 gyro (high class): low-pass filtered orientation, calibrated neutral,
      continuous vector. vx/vy in screen coords (y down): down = (0,1). */
@@ -333,6 +336,18 @@ export function MatterLab(props) {
   const heatCacheRef = useRef(new Map()); const menRef = useRef({ map: new Map() }); const frameNoRef = useRef(0);
   const processedNonceRef = useRef(null); const kbRef = useRef({});
   const [muted, setMuted] = useState(false); const mutedRef = useRef(false);
+  const [soundOn, setSoundOn] = useState(() => !!sfxEnabled() && !PERF.disableSound && !PERF.safe2GB);
+  const soundOnRef = useRef(soundOn); soundOnRef.current = soundOn;
+  const [spatialAudioOn, setSpatialAudioOn] = useState(() => lsGet('matterlab:spatial-audio', true) !== false);
+  const spatialAudioRef = useRef(spatialAudioOn); spatialAudioRef.current = spatialAudioOn;
+  const [sandboxModeId, setSandboxModeId] = useState(() => Game.getSandboxState().mode);
+  const sandboxModeRef = useRef(sandboxModeId); sandboxModeRef.current = sandboxModeId;
+  const fieldKitAdoptedRef = useRef(sandboxModeId === 'field-kit');
+  const sandboxSessionRef = useRef(null);
+  if (!sandboxSessionRef.current) { const saved = Game.getSandboxState(); sandboxSessionRef.current = createSandboxSession(saved.mode, saved.credits); }
+  const [sandboxStatus, setSandboxStatus] = useState(() => sandboxSessionRef.current.snapshot());
+  const sandboxPersistAtRef = useRef(0);
+  const sandboxUiAtRef = useRef(0);
   const [sheet, setSheet] = useState(''); // '', 'scenes', 'recipes', 'help', 'log', 'menu'
   const [scenes, setScenes] = useState(() => lsGet(LS.scenes, {}));
   const [recipes, setRecipes] = useState(() => lsGet(LS.recipes, {}));
@@ -372,9 +387,11 @@ export function MatterLab(props) {
   const [achMap, setAchMap] = useState(() => Game.getAchievements());
   const [achToast, setAchToast] = useState(null); // brief TOP toast (never bottom spam)
   const achToastTRef = useRef(0);
-  const [dailyStatus, setDailyStatus] = useState(null); // { tpl, done, detail }
+  const [challengeStatus, setChallengeStatus] = useState(null); // live daily/weekly challenge measurements
   const dailyDoneRef = useRef(!!(Game.getDailyState()[Game.dateKey()] || {}).done);
-  const rxTodayRef = useRef(new Set()); // distinct reaction cards fired today (daily rx5 + honest session tracking)
+  const weeklyDoneRef = useRef(!!Game.getChallengeSummary().weeklyDone);
+  const rxTodayRef = useRef(Game.getChallengeActivity().dailyReactions); // real, persisted named reactions observed in this day
+  const rxWeekRef = useRef(Game.getChallengeActivity().weeklyReactions);
   const expSetupTickRef = useRef(null);
   const [slots, setSlots] = useState(() => Game.loadSlots());
   const [slotName, setSlotName] = useState('');
@@ -417,16 +434,121 @@ export function MatterLab(props) {
   /* Matter Lab Ultra — Power Mode: 10× speed + stronger gravity (>1). */
   const [powerOn, setPowerOn] = useState(() => { try { return lsGet(LS.power, false); } catch { return false; } });
   const powerRef = useRef(powerOn); powerRef.current = powerOn;
+  const allowedSpeedIndices = (modeId = sandboxModeRef.current, power = powerRef.current) => SPEEDS
+    .map((value, index) => speedAllowed(modeId, value, power) ? index : -1)
+    .filter((index) => index >= 0);
+  const setSpeedPolicy = (next) => {
+    const proposed = typeof next === 'function' ? next(speedRef.current) : next;
+    const index = Math.max(0, Math.min(SPEEDS.length - 1, Math.floor(Number(proposed) || 0)));
+    const allowed = allowedSpeedIndices();
+    const safe = allowed.includes(index) ? index : (allowed.filter((candidate) => candidate <= index).at(-1) ?? allowed[0] ?? 0);
+    speedRef.current = safe;
+    setSpeedI(safe);
+    if (safe !== index) toast(`Speed is limited to ${sandboxMode(sandboxModeRef.current).maxSpeed}× in this mode`);
+    return safe;
+  };
+  const cycleSpeed = () => {
+    const allowed = allowedSpeedIndices();
+    if (!allowed.length) return 0;
+    const position = allowed.indexOf(speedRef.current);
+    const next = allowed[(position + 1 + allowed.length) % allowed.length];
+    return setSpeedPolicy(next);
+  };
   const applyPower = (v) => {
-    const on = !!v; setPowerOn(on); lsSet(LS.power, on);
-    const e = engRef.current; if (e) e.setGravityStrength(on ? 4 : 1);
+    const on = !!v;
+    const mode = sandboxMode(sandboxModeRef.current);
+    if (on && !mode.powerMode) { toast(`${mode.name} does not allow Power Mode`); return false; }
+    setPowerOn(on); powerRef.current = on; lsSet(LS.power, on);
+    const e = engRef.current; if (e) e.setGravityStrength(sandboxGravityStrength(sandboxModeRef.current, on));
+    setSpeedPolicy(speedRef.current);
     toast(on ? 'Power Mode ON — 10× speed, stronger gravity' : 'Power Mode OFF');
+    return true;
+  };
+  const syncSandboxStatus = (force = false) => {
+    const session = sandboxSessionRef.current;
+    if (!session) return null;
+    const next = session.snapshot();
+    const now = Date.now();
+    if (force || now - sandboxUiAtRef.current > 180) {
+      sandboxUiAtRef.current = now;
+      setSandboxStatus((prev) => prev && prev.mode === next.mode && prev.credits === next.credits ? prev : next);
+    }
+    if (force || now - sandboxPersistAtRef.current > 900) {
+      Game.setSandboxState(next);
+      sandboxPersistAtRef.current = now;
+    }
+    return next;
+  };
+  const applySound = (on) => {
+    const enabled = !!on;
+    setSoundOn(enabled); soundOnRef.current = enabled;
+    setSfxEnabled(enabled);
+    if (sndRef.current) sndRef.current.setEnabled(enabled);
+    setPerfStore({ disableSound: !enabled });
+  };
+  const applySpatialAudio = (on) => {
+    const enabled = !!on;
+    setSpatialAudioOn(enabled); spatialAudioRef.current = enabled;
+    lsSet('matterlab:spatial-audio', enabled);
+    if (sndRef.current) sndRef.current.setSpatialEnabled(enabled);
+  };
+  const applySandboxMode = (modeValue, announce = true) => {
+    const mode = normalizeSandboxMode(modeValue);
+    const activeMode = sandboxSessionRef.current?.mode || Game.getSandboxState().mode;
+    if (mode === activeMode) return mode;
+    if (recipeReplayRef.current) recipeReplayRef.current.cancel('Recipe replay stopped before changing sandbox mode');
+    const previous = sandboxSessionRef.current?.snapshot();
+    const currentMode = sandboxSessionRef.current?.mode || Game.getSandboxState().mode;
+    if (previous) Game.setSandboxState(previous);
+    const saved = Game.getSandboxState();
+    let entryCost = 0;
+    if (mode === 'field-kit' && currentMode !== 'field-kit' && !fieldKitAdoptedRef.current) {
+      const activeEngine = engRef.current;
+      if (activeEngine) {
+        try { entryCost = sceneSupplyCost(activeEngine.serialize(), (id) => SUBSTANCES[id]); }
+        catch { entryCost = Infinity; }
+      }
+      if (entryCost > saved.credits) {
+        const limit = sandboxMode('field-kit').supplyCap;
+        const need = entryCost > limit ? `the scene exceeds its ${limit.toLocaleString()}-credit capacity` : `the scene needs ${entryCost.toLocaleString()} credits`;
+        toast(`Cannot enter Field Kit: ${need}; ${saved.credits.toLocaleString()} available`);
+        return currentMode;
+      }
+      fieldKitAdoptedRef.current = true;
+    }
+    if (currentMode === 'field-kit' && mode !== 'field-kit') fieldKitAdoptedRef.current = false;
+    sandboxSessionRef.current = createSandboxSession(mode, Math.max(0, saved.credits - entryCost));
+    sandboxModeRef.current = mode;
+    setSandboxModeId(mode);
+    const def = sandboxMode(mode);
+    setSpeedPolicy(speedRef.current);
+    if (powerRef.current && !def.powerMode) applyPower(false);
+    const e = engine();
+    if (e) {
+      if (gyroOnRef.current) setGyroOn(false);
+      else e.setGravityVector(0, 1, 1);
+      applySandboxPreset(e, mode);
+      e.setGravityStrength(sandboxGravityStrength(mode, powerRef.current));
+      setGravDir(0); gravDirRef.current = 0;
+      syncAudioListener(e);
+    }
+    Game.setSandboxState(sandboxSessionRef.current.snapshot());
+    sandboxPersistAtRef.current = Date.now();
+    syncSandboxStatus(true);
+    if (announce) toast(`${def.name} active — ${def.ambientT}°C ambient · ${def.gravity} gravity${def.supplyCap ? ` · ${sandboxSessionRef.current.credits} supply credits` : ''}`);
+    return mode;
   };
   const toolRef = useRef('paint'); toolRef.current = tool; const selRecRef = useRef(null);
   const chromeRef = useRef({ sheet: '', picker: false, sideOpen: false });
 
   chromeRef.current = { sheet, picker, sideOpen };
   const engine = () => engRef.current;
+  const syncAudioListener = (e = engine()) => {
+    const sound = sndRef.current;
+    if (!sound || !e) return null;
+    const view = viewRef.current;
+    return sound.setListener({ cols: e.cols, rows: e.rows, fx: view.fx, fy: view.fy, zoom: view.z });
+  };
   const selRec = SUBSTANCES[selId] || SUBSTANCES[1]; selRecRef.current = selRec;
 
   /* W32U-5 R2: selection refresh — full object snapshot for the Gear panel +
@@ -487,6 +609,8 @@ export function MatterLab(props) {
          in-world event: total reactions, today's distinct set, and the
          persistent DISCOVERY LOG keyed by the reaction's card identity. */
       Game.bumpRxTotal();
+      const fieldReward = sandboxSessionRef.current?.rewardReaction();
+      if (fieldReward?.gained) syncSandboxStatus(false);
       /* Discovery + the daily distinct-set count NAMED pair cards only
          (family/template cards are patterns, not named reactions — see
          game.js isNamedCard). first-reaction fires for ANY real event. */
@@ -494,6 +618,8 @@ export function MatterLab(props) {
       const d1 = Game.awardAchievement('first-reaction'); if (d1) fresh.push(d1);
       if (evt.card && Game.isNamedCard(evt.card)) {
         rxTodayRef.current.add(evt.card);
+        rxWeekRef.current.add(evt.card);
+        Game.recordChallengeReaction(evt.card);
         if (Game.recordDiscovery(evt.card)) {
           setDiscoveries(Game.namedDiscoveries());
           const d2 = Game.awardAchievement('first-discovery'); if (d2) fresh.push(d2);
@@ -526,6 +652,7 @@ export function MatterLab(props) {
         if (engRef.current === eng) {
           rebuildOff(eng);
           setGridDims({ cols: eng.cols, rows: eng.rows });
+          syncAudioListener(eng);
           const canvas = canvasRef.current;
           try { if (canvas && typeof canvas.animate === 'function') canvas.animate([{ opacity: 0.72 }, { opacity: 1 }], { duration: change.transition.durationMs, easing: 'ease-out' }); } catch { /* optional visual crossfade */ }
         }
@@ -577,9 +704,14 @@ export function MatterLab(props) {
     wireEngine(eng);
     installAdaptiveController(eng, tierI);
     if (scene) { try { eng.deserialize(scene); } catch { /* start empty rather than crash */ } }
+    const modeDef = sandboxMode(sandboxModeRef.current);
+    if (powerRef.current && !modeDef.powerMode) { powerRef.current = false; setPowerOn(false); lsSet(LS.power, false); }
+    eng.setGravityVector(0, 1, 1);
+    applySandboxPreset(eng, sandboxModeRef.current);
+    eng.setGravityStrength(sandboxGravityStrength(sandboxModeRef.current, powerRef.current));
     const resetDims = dimsForTier(tierI, aspectRef.current);
     if (eng.cols !== resetDims.cols || eng.rows !== resetDims.rows) eng.setTier(resetDims.cols, resetDims.rows);
-    rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows });
+    rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows }); syncAudioListener(eng);
     errStreakRef.current = 0; setSimError(null); setPaused(false); startLoop();
     toast('Engine reset — scene restored');
   };
@@ -616,7 +748,16 @@ export function MatterLab(props) {
     engRef.current = eng;
     const prefs = loadPerf();
     if (prefs.capParts > 0) eng.setMaxParts(prefs.capParts); // movement-duty cap, independent of the hard safe particle budget
-    const snd = new MatterSound(); sndRef.current = (prefs.disableSound ? null : snd);
+    const modeDef = sandboxMode(sandboxModeRef.current);
+    if (powerRef.current && !modeDef.powerMode) { powerRef.current = false; setPowerOn(false); lsSet(LS.power, false); }
+    eng.setGravityVector(0, 1, 1);
+    applySandboxPreset(eng, sandboxModeRef.current);
+    eng.setGravityStrength(sandboxGravityStrength(sandboxModeRef.current, powerRef.current));
+    const snd = new MatterSound();
+    snd.setEnabled(soundOnRef.current && !prefs.disableSound);
+    snd.setSpatialEnabled(spatialAudioRef.current);
+    snd.setListener({ cols: eng.cols, rows: eng.rows, fx: viewRef.current.fx, fy: viewRef.current.fy, zoom: viewRef.current.z });
+    sndRef.current = snd;
     wireEngine(eng);
     installAdaptiveController(eng, ti);
     rebuildOff(eng); setGridDims({ cols: eng.cols, rows: eng.rows });
@@ -668,9 +809,15 @@ export function MatterLab(props) {
           if (Math.abs(e.windX) > 0.01 || Math.abs(e.windY) > 0.01) { e.windX *= 0.94; e.windY *= 0.94; } else { e.windX = 0; e.windY = 0; }
           if (sndRef.current) { sndRef.current.frame(0.016);
             const pp = ptrRef.current;
-            if (pp && (toolRef.current === 'paint' || toolRef.current === 'spray')) { const rec = selRecRef.current; const cls = rec ? rec.cls : ''; const x01 = pp.x != null && e.cols ? pp.x / e.cols : null;
-              if (cls === 'liquid') sndRef.current.setLoop((rec.viscosity || 0) >= 0.5 ? 'pour-oil' : 'pour', 0.55, null, x01);
-              else if (cls === 'powder') { if ((rec.fams || []).includes('stone')) sndRef.current.setLoop('pour-grain', 0.5, null, x01); else sndRef.current.event('shush', 0.4, null, x01); } }
+            if (pp && (toolRef.current === 'paint' || toolRef.current === 'spray')) {
+              const rec = selRecRef.current, point = pp.cur || pp.last || pp.start;
+              const cls = rec ? rec.cls : '';
+              const x01 = point && e.cols ? point.x / Math.max(1, e.cols - 1) : null;
+              const y01 = point && e.rows ? point.y / Math.max(1, e.rows - 1) : null;
+              if (cls === 'liquid') sndRef.current.setLoop((rec.viscosity || 0) >= 0.5 ? 'pour-oil' : 'pour', 0.55, null, x01, 0.15, y01);
+              else if (cls === 'powder' && (rec.fams || []).includes('stone')) sndRef.current.setLoop('pour-grain', 0.5, null, x01, 0.15, y01);
+              else if (cls === 'powder') sndRef.current.event('shush', 0.4, null, x01, 0.15, y01);
+            }
           }
         } else lastT = now;
         /* P3 gyro applier: the continuous gravity vector goes straight
@@ -680,7 +827,9 @@ export function MatterLab(props) {
            vector (unit direction x gravMag), not the raw sensor state. */
         if (gyroOnRef.current) {
           const v = gyroVecRef.current;
-          e.setGravityVector(v.vx, v.vy, Math.max(0.05, Math.min(1, v.mag)));
+          const gravityMagnitude = Math.max(0.05, Math.min(1, v.mag)) * sandboxGravityStrength(sandboxModeRef.current, powerRef.current);
+          e.setGravityVector(v.vx, v.vy, Math.min(1, gravityMagnitude));
+          e.setGravityStrength(gravityMagnitude);
           if (e.gravity !== gravDirRef.current) { gravDirRef.current = e.gravity; setGravDir(e.gravity); }
           const gv = e.getGravityVector();
           const ea = Math.atan2(gv.effY, gv.effX) * 180 / Math.PI;
@@ -726,19 +875,43 @@ export function MatterLab(props) {
             }
           }
         } catch { /* best-effort */ } }
-        /* P4: daily challenge checker against live engine state. */
+        /* v27: one bounded cell scan updates both rotating boards; event goals
+           use only named reactions the engine really fired during that period. */
         try {
-          { const tk = Game.dateKey(); if (loopRef.current._dailyDate !== tk) { loopRef.current._dailyDate = tk; dailyDoneRef.current = !!(Game.getDailyState()[tk] || {}).done; rxTodayRef.current = new Set(); } }
-          const tpl = Game.dailyFor();
-          const chk = tpl.check(e, { rxToday: rxTodayRef.current });
-          const done = dailyDoneRef.current || chk.done;
-          if (chk.done && !dailyDoneRef.current) {
-            dailyDoneRef.current = true;
-            if (Game.markDailyDone()) { const d = Game.awardAchievement('daily-done'); toast(`Daily challenge complete — ${tpl.name}`); if (d) announceAch(d); }
+          const tk = Game.dateKey();
+          const wk = Game.weeklyKey(tk);
+          const activity = Game.getChallengeActivity(tk);
+          if (loopRef.current._challengeDay !== tk) {
+            loopRef.current._challengeDay = tk;
+            dailyDoneRef.current = !!((Game.getDailyState()[tk] || {}).done || Game.getChallengeSummary().dailyDone);
+            rxTodayRef.current = activity.dailyReactions;
           }
-          const sig = tpl.id + '|' + done + '|' + chk.detail;
-          if (sig !== (loopRef.current._dailySig || '')) { loopRef.current._dailySig = sig; setDailyStatus({ tpl, done, detail: chk.detail }); }
-        } catch { /* best-effort */ }
+          if (loopRef.current._challengeWeek !== wk) {
+            loopRef.current._challengeWeek = wk;
+            weeklyDoneRef.current = !!Game.getChallengeSummary().weeklyDone;
+            rxWeekRef.current = activity.weeklyReactions;
+          }
+          const daily = Game.dailyFor(tk), weekly = Game.weeklyFor(tk);
+          const metrics = Game.measureChallengeWorld(e);
+          const dailyProgress = Game.evaluateChallenge(daily, metrics, { dailyReactions: rxTodayRef.current, rxToday: rxTodayRef.current });
+          const weeklyProgress = Game.evaluateChallenge(weekly, metrics, { weeklyReactions: rxWeekRef.current });
+          if (dailyProgress.done && !dailyDoneRef.current) {
+            dailyDoneRef.current = true;
+            if (Game.markDailyDone(tk, daily.id)) { const d = Game.awardAchievement('daily-done'); toast(`Daily challenge complete — ${daily.name} (+${daily.reward} points)`); if (d) announceAch(d); }
+          }
+          if (weeklyProgress.done && !weeklyDoneRef.current) {
+            weeklyDoneRef.current = true;
+            if (Game.markWeeklyDone(wk, weekly.id)) toast(`Weekly challenge complete — ${weekly.name} (+${weekly.reward} points)`);
+          }
+          const summary = Game.getChallengeSummary(new Date());
+          const next = {
+            daily: { challenge: daily, progress: dailyProgress, done: dailyDoneRef.current || dailyProgress.done },
+            weekly: { challenge: weekly, progress: weeklyProgress, done: weeklyDoneRef.current || weeklyProgress.done },
+            summary,
+          };
+          const sig = [daily.id, dailyProgress.detail, next.daily.done, weekly.id, weeklyProgress.detail, next.weekly.done, summary.points, summary.streak].join('|');
+          if (sig !== (loopRef.current._challengeSig || '')) { loopRef.current._challengeSig = sig; setChallengeStatus(next); }
+        } catch { /* best-effort — challenge checks never stop the simulation */ }
         /* P4: first-boil scan (throttled to this cadence) — any water cell
            at 100°C+ is a real boil, however it was achieved. */
         try {
@@ -771,9 +944,12 @@ export function MatterLab(props) {
       }
       if (now - lastAmb > 250 && sndRef.current) { // SND2 ambient bed: sampled scan of real engine state
         lastAmb = now;
-        const elA = e.el, auxA = e.aux; let burn = 0, liq = 0, stm = 0;
-        for (let k = 0; k < elA.length; k += 113) { const id = elA[k]; if (!id) continue; if (auxA[k] & 32) burn++; const rc = SUBSTANCES[id]; if (rc.cls === 'liquid') liq++; else if (rc.cls === 'gas' && (rc.key || '').includes('steam')) stm++; }
-        sndRef.current.setAmbient({ fire: Math.min(1, burn / 6), water: liq > 2 ? Math.min(1, liq / 40) : 0, wind: Math.min(1, (Math.abs(e.windX) + Math.abs(e.windY)) / 2), steam: Math.min(1, stm / 8) });
+        if (pausedRef.current) sndRef.current.setAmbient({});
+        else {
+          const elA = e.el, auxA = e.aux; let burn = 0, liq = 0, stm = 0;
+          for (let k = 0; k < elA.length; k += 113) { const id = elA[k]; if (!id) continue; if (auxA[k] & 32) burn++; const rc = SUBSTANCES[id]; if (rc.cls === 'liquid') liq++; else if (rc.cls === 'gas' && (rc.key || '').includes('steam')) stm++; }
+          sndRef.current.setAmbient({ fire: Math.min(1, burn / 6), water: liq > 2 ? Math.min(1, liq / 40) : 0, wind: Math.min(1, (Math.abs(e.windX) + Math.abs(e.windY)) / 2), steam: Math.min(1, stm / 8) });
+        }
       }
       if (now - lastGov > 500) {
         /* HARDEN B — load governor. Ladder order (user's): (1) tick rate 60->45->30,
@@ -839,12 +1015,12 @@ export function MatterLab(props) {
         const tix = govRef.current.tierIndex >= 0 ? govRef.current.tierIndex : ti;
         const nd = dimsForTier(tix, na);
         if (nd.cols !== e2.cols || nd.rows !== e2.rows) {
-          try { e2.resize(nd.cols, nd.rows); rebuildOff(e2); setGridDims({ cols: e2.cols, rows: e2.rows }); } catch { /* keep the old grid rather than crash */ }
+          try { e2.resize(nd.cols, nd.rows); rebuildOff(e2); setGridDims({ cols: e2.cols, rows: e2.rows }); syncAudioListener(e2); } catch { /* keep the old grid rather than crash */ }
         }
       }, 350);
     };
     window.addEventListener('resize', onRz);
-    return () => { cancelAnimationFrame(rafRef.current); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pointerdown', unlock); window.removeEventListener('resize', onRz); clearTimeout(rzT); if (sndRef.current) { sndRef.current.dispose(); sndRef.current = null; } if (glRef.current) { glRef.current.dispose(); glRef.current = null; } };
+    return () => { cancelAnimationFrame(rafRef.current); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pointerdown', unlock); window.removeEventListener('resize', onRz); clearTimeout(rzT); if (recipeReplayRef.current) recipeReplayRef.current.cancel('', false); try { Game.setSandboxState(sandboxSessionRef.current.snapshot()); } catch { /* keep last persisted Field Kit balance */ } if (sndRef.current) { sndRef.current.dispose(); sndRef.current = null; } if (glRef.current) { glRef.current.dispose(); glRef.current = null; } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt]);
 
@@ -1357,7 +1533,17 @@ export function MatterLab(props) {
   };
   const syncDeserializedScene = (e) => { rebuildOff(e); setGridDims({ cols: e.cols, rows: e.rows }); setParts(e.stats().particles); };
   const replaceSceneWithUndo = (e, scene) => {
-    if (!sceneSwapRef.current.replace(e, scene)) return false;
+    if (recipeReplayRef.current) recipeReplayRef.current.cancel('Recipe replay stopped before loading a scene');
+    const session = sandboxSessionRef.current;
+    const cost = session?.mode === 'field-kit' ? sceneSupplyCost(scene, (id) => SUBSTANCES[id]) : 0;
+    if (cost > (session?.credits ?? 0)) {
+      const limit = sandboxMode('field-kit').supplyCap;
+      const need = cost > limit ? `this scene exceeds the ${limit.toLocaleString()}-credit capacity` : `this scene needs ${cost.toLocaleString()} credits`;
+      toast(`Cannot load scene into Field Kit: ${need}; ${session?.credits || 0} available`);
+      return false;
+    }
+    if (!sceneSwapRef.current.replace(e, scene)) { toast('That scene could not be loaded'); return false; }
+    if (session?.mode === 'field-kit' && cost > 0) { session.spendCredits(cost); syncSandboxStatus(true); }
     undoRef.current.clear(); redoRef.current.clear();
     syncDeserializedScene(e);
     return true;
@@ -1394,32 +1580,44 @@ export function MatterLab(props) {
     return { x: Math.max(0, Math.min(e.cols - 1, Math.floor((ev.clientX - r.left) / r.width * e.cols))), y: Math.max(0, Math.min(e.rows - 1, Math.floor((ev.clientY - r.top) / r.height * e.rows))) };
   };
   const brushForPointer = (pointerType = ptrRef.current?.pointerType || 'mouse', base = brush) => effectiveBrushRadius(base, touchLevelRef.current, pointerType);
+  const paintWithMode = (e, x, y, radius, id, opts = {}) => paintWithSandboxPolicy(
+    e, sandboxSessionRef.current, x, y, radius, id, opts, SUBSTANCES[id] || SUBSTANCES[1],
+  );
+  const setWithMode = (e, x, y, id, opts) => setWithSandboxPolicy(
+    e, sandboxSessionRef.current, x, y, id, opts, SUBSTANCES[id] || SUBSTANCES[1],
+  );
   const paintAt = (g, opts = {}, record = true) => {
     const e = engine(); if (!e) return;
     const dens = tool === 'spray' ? 0.22 : tool === 'dropper' ? 0.12 : 1;
     const r = brushForPointer(ptrRef.current?.pointerType || 'mouse', tool === 'dropper' ? 1 : brush);
-    e.paint(g.x, g.y, r, selId, { shape: tool === 'spray' ? 'circle' : shape, density: dens, ...opts });
+    const result = paintWithMode(e, g.x, g.y, r, selId, { shape: tool === 'spray' ? 'circle' : shape, density: dens, ...opts });
+    if (result?.changed) syncSandboxStatus(false);
     if (record && e.recordFlightAction) e.recordFlightAction('paint', { tool, at: `${g.x},${g.y}`, id: selId });
   };
   const floodFill = (g) => {
     const e = engine(); if (!e) return;
     const target = e.get(g.x, g.y); if (target === selId) return;
-    const stack = [[g.x, g.y]]; let n = 0;
+    const stack = [[g.x, g.y]], seen = new Uint8Array(e.el.length); let n = 0;
     while (stack.length && n < 200000) {
       const [x, y] = stack.pop(); const i = y * e.cols + x;
+      if (seen[i]) continue;
+      seen[i] = 1;
       if (e.el[i] !== target || e.objMap[i] !== 0) continue;
-      e.set(x, y, selId); n++;
+      if (sandboxSessionRef.current?.mode === 'field-kit' && !sandboxSessionRef.current.canSpend(SUBSTANCES[selId] || SUBSTANCES[1])) break;
+      if (setWithMode(e, x, y, selId)) n++;
       if (x > 0) stack.push([x - 1, y]); if (x < e.cols - 1) stack.push([x + 1, y]);
       if (y > 0) stack.push([x, y - 1]); if (y < e.rows - 1) stack.push([x, y + 1]);
     }
+    if (n) syncSandboxStatus(false);
   };
   const drawShape = (a, b, pointerType = 'mouse') => {
     const e = engine(); if (!e) return;
     const shapeBrush = brushForPointer(pointerType, brush);
-    const put = (x, y) => { if (x >= 0 && y >= 0 && x < e.cols && y < e.rows && e.objMap[y * e.cols + x] === 0) e.paint(x, y, Math.max(0, Math.floor(shapeBrush / 3)), selId, { shape: 'square' }); };
+    const put = (x, y) => { if (x >= 0 && y >= 0 && x < e.cols && y < e.rows && e.objMap[y * e.cols + x] === 0) paintWithMode(e, x, y, Math.max(0, Math.floor(shapeBrush / 3)), selId, { shape: 'square' }); };
     if (tool === 'line') { const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y), 1); for (let s = 0; s <= steps; s++) put(Math.round(a.x + (b.x - a.x) * s / steps), Math.round(a.y + (b.y - a.y) * s / steps)); }
     else if (tool === 'rect') { for (let y = Math.min(a.y, b.y); y <= Math.max(a.y, b.y); y++) for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x++) put(x, y); }
     else if (tool === 'circle') { const r = Math.hypot(b.x - a.x, b.y - a.y); for (let y = Math.floor(a.y - r); y <= a.y + r; y++) for (let x = Math.floor(a.x - r); x <= a.x + r; x++) if (Math.hypot(x - a.x, y - a.y) <= r) put(x, y); }
+    syncSandboxStatus(false);
   };
 
   /* ---------------- FEEL helpers (Phase-2 feel overhaul) ----------------
@@ -1519,6 +1717,7 @@ export function MatterLab(props) {
     const zz = Math.max(1, Math.min(6, z));
     viewRef.current = { z: zz, fx: zz <= 1.001 ? null : fx, fy: zz <= 1.001 ? null : fy };
     setZoom(zz);
+    syncAudioListener();
   };
   const onDown = (ev) => {
     ev.preventDefault();
@@ -1580,7 +1779,8 @@ export function MatterLab(props) {
     }
     else if (tool === 'clone' && cloneRef.current) { // stamp
       const cl = cloneRef.current;
-      cl.cells.forEach(([dx, dy, id, tp]) => { const x = g.x + dx, y = g.y + dy; if (x >= 0 && y >= 0 && x < e.cols && y < e.rows && e.objMap[y * e.cols + x] === 0) { e.set(x, y, id); e.temp[y * e.cols + x] = tp; } });
+      cl.cells.forEach(([dx, dy, id, tp]) => { const x = g.x + dx, y = g.y + dy; if (x >= 0 && y >= 0 && x < e.cols && y < e.rows && e.objMap[y * e.cols + x] === 0) { if (setWithMode(e, x, y, id)) e.temp[y * e.cols + x] = tp; } });
+      syncSandboxStatus(false);
     }
   };
   const onMove = (ev) => {
@@ -1655,6 +1855,7 @@ export function MatterLab(props) {
   const onUp = (ev) => {
     const rec = ptrMapRef.current.get(ev.pointerId);
     ptrMapRef.current.delete(ev.pointerId);
+    if (ptrMapRef.current.size === 0 && sndRef.current) for (const cls of ['pour', 'pour-oil', 'pour-grain']) sndRef.current.setLoop(cls, 0);
     if (pinchRef.current) {
       // a pinch (or swallowed two-finger tap) ends when fingers lift — the
       // gesture never falls through to painting or tap behaviours.
@@ -1759,11 +1960,17 @@ export function MatterLab(props) {
     /* W32U-5 R2: centre the stamp in the world using its real dims when the
        engine exposes stampDims; fall back to the old offsets otherwise */
     const isVessel = VESSEL_KINDS.has(kind);
+    const kit = sandboxSessionRef.current;
+    const gearCost = kit?.mode === 'field-kit' ? gearCreditCost(kind) : 0;
+    if (gearCost && !kit.canSpendCredits(gearCost)) { toast(`Field Kit needs ${gearCost} credits for ${kind} (${kit.snapshot().credits} left)`); return; }
     /* PHASE 0: kinds whose name already carries a size (Beaker S/M/L, Lid
        S/M/L) ignore the vessel-size selector — stacking XL on Beaker L made
        one beaker fill 87% of a phone screen and the ladder made no sense. */
     const INTRINSIC_SIZE = kind.startsWith('beaker-') || kind.startsWith('lid-');
     const useSize = isVessel && !INTRINSIC_SIZE;
+    const placeAt = (px, py) => placeGearWithSandboxPolicy(
+      e, kit, kind, px, py, ...(useSize ? [{ size: vesselSize }] : []),
+    );
     const dims = typeof e.stampDims === 'function' ? (useSize ? e.stampDims(kind, { size: vesselSize }) : e.stampDims(kind)) : null;
     let x = dims ? Math.max(0, Math.min(Math.max(0, e.cols - dims.w), Math.floor((e.cols - dims.w) / 2))) : Math.floor(e.cols / 2 - 10);
     /* FEEL K1: gear lands ON the bench surface — its base row sits above
@@ -1779,20 +1986,27 @@ export function MatterLab(props) {
     if (e.objects && e.objects.size >= 64) { toast('Object limit reached (64) — remove an item first'); return; } // HARDEN cap
     /* PHASE 0: if the landing spot is taken, try neighbouring spots on the
        same support row instead of failing outright. */
-    let id = useSize ? e.placeObject(kind, x, y, { size: vesselSize }) : e.placeObject(kind, x, y);
+    let placed = placeAt(x, y);
+    if (placed.blocked) { toast(`Field Kit needs ${gearCost} credits for ${kind} (${kit.snapshot().credits} left)`); return; }
+    let id = placed.id;
     if (id == null && dims) {
       const step = Math.max(8, Math.floor(dims.w / 2));
       for (const dx of [step, -step, step * 2, -step * 2, step * 3, -step * 3, step * 4, -step * 4, step * 6, -step * 6, step * 8, -step * 8]) {
         const nx = Math.max(0, Math.min(Math.max(0, e.cols - dims.w), x + dx));
-        id = useSize ? e.placeObject(kind, nx, y, { size: vesselSize }) : e.placeObject(kind, nx, y);
+        placed = placeAt(nx, y);
+        if (placed.blocked) { toast(`Field Kit needs ${gearCost} credits for ${kind} (${kit.snapshot().credits} left)`); return; }
+        id = placed.id;
         if (id != null) break;
       }
       if (id == null && y !== floorY) { // stacked spot blocked — fall back to the bench row
         y = floorY; x = Math.max(0, Math.min(Math.max(0, e.cols - dims.w), Math.floor((e.cols - dims.w) / 2)));
-        id = useSize ? e.placeObject(kind, x, y, { size: vesselSize }) : e.placeObject(kind, x, y);
+        placed = placeAt(x, y);
+        if (placed.blocked) { toast(`Field Kit needs ${gearCost} credits for ${kind} (${kit.snapshot().credits} left)`); return; }
+        id = placed.id;
       }
     }
     if (id == null) { toast('No clear space at the centre — clear a spot first'); return; }
+    if (gearCost) syncSandboxStatus(false);
     if (kind === 'burner' || kind === 'cooling-coil') { if (typeof e.setObjectLevel === 'function') e.setObjectLevel(id, 2); else if (kind === 'burner') e.interactObject(id); } // default: Med (lit / cooling)
     /* FEEL K3 (burner under vessel): reseat the vessel onto the new burner. */
     if (kind === 'burner' && seatVessel && typeof e.moveObjectTo === 'function') {
@@ -1841,8 +2055,10 @@ export function MatterLab(props) {
   };
   const duplicateSelObj = () => {
     const e = engine(); if (!e || !selObj) return;
-    const nid = typeof e.duplicateObject === 'function' ? e.duplicateObject(selObj.id) : null;
-    if (nid != null) { refreshSel(nid); toast('Duplicated'); } else toast('No clear space for a copy');
+    const result = duplicateGearWithSandboxPolicy(e, sandboxSessionRef.current, selObj.id);
+    if (result.blocked) { toast(`Field Kit needs ${gearCreditCost(selObj.kind)} credits to duplicate ${selObj.kind} (${sandboxSessionRef.current.credits} left)`); return; }
+    if (result.id != null) { if (result.spent) syncSandboxStatus(false); refreshSel(result.id); toast('Duplicated'); }
+    else toast('No clear space for a copy');
   };
   /* UI-B: renderer preference drives the GL gate. '2d' forces the plain
      path; 'gl' forces GL (no auto-drop); 'auto' starts on GL and lets the
@@ -1904,15 +2120,59 @@ export function MatterLab(props) {
     if (!o) setSelObj(null);
     else if (o.kind !== selObj.kind || o.level !== selObj.level || !!o.locked !== !!selObj.locked || o.scale !== selObj.scale || o.w !== selObj.w || o.h !== selObj.h) setSelObj({ id: selObj.id, kind: o.kind, level: o.level, locked: !!o.locked, scale: o.scale, w: o.w, h: o.h });
   }, [selObj, sideOpen]);
+  const runBuiltScene = (e, builder) => {
+    if (recipeReplayRef.current) recipeReplayRef.current.cancel('Recipe replay stopped before building a scene');
+    if (!e || typeof builder !== 'function') return false;
+    let before;
+    try { before = e.serialize(); } catch { toast('Could not snapshot the current world'); return false; }
+    const session = sandboxSessionRef.current;
+    const fieldKit = session?.mode === 'field-kit';
+    const creditsBefore = session?.credits || 0;
+    const budgetError = () => { const error = new Error('Field Kit supply exhausted'); error.fieldKitBudget = true; return error; };
+    const policy = {
+      paint: (x, y, radius, id, options = {}) => {
+        const opts = { ...options, sound: false };
+        if (!fieldKit) return e.paint(x, y, radius, id, opts);
+        const result = paintWithSandboxPolicy(e, session, x, y, radius, id, opts, SUBSTANCES[id] || SUBSTANCES[1]);
+        if (result.blocked > 0) throw budgetError();
+        return result;
+      },
+      placeObject: (kind, ...args) => {
+        const result = placeGearWithSandboxPolicy(e, fieldKit ? session : null, kind, ...args);
+        if (result.blocked) throw budgetError();
+        return result.id;
+      },
+    };
+    try {
+      e.clear();
+      builder(policy);
+      const after = e.serialize();
+      if (!sceneSwapRef.current.recordReplacement(before, after)) throw new Error('Could not record scene replacement');
+      undoRef.current.clear(); redoRef.current.clear();
+      syncDeserializedScene(e);
+      if (fieldKit) syncSandboxStatus(true);
+      return true;
+    } catch (error) {
+      try { e.deserialize(before); } catch { /* best-effort scene rollback */ }
+      if (fieldKit) {
+        sandboxSessionRef.current = createSandboxSession('field-kit', creditsBefore);
+        Game.setSandboxState(sandboxSessionRef.current.snapshot());
+        syncSandboxStatus(true);
+      }
+      syncDeserializedScene(e);
+      toast(error?.fieldKitBudget ? 'Field Kit does not have enough supply for that full scene; your previous world was restored' : 'Scene setup failed; your previous world was restored');
+      return false;
+    }
+  };
   const buildDemo = (which, viaExp = false) => {
     const e = engine(); if (!e) return;
     /* P4 unlocks: later showcase scenes open as stars are earned (the
        Sandbox itself is never locked). Experiment setups pass viaExp —
        the experiment's own star gate is the lock for its setup scene. */
-    if (!viaExp && !Game.isSceneUnlocked(which)) { toast(`Locked — earn ${Game.SCENE_UNLOCK[which] || 0}★ in Experiments to open this scene`); return; }
-    snapshot(); e.clear();
-    buildSceneInto(e, which);
+    if (!viaExp && !Game.isSceneUnlocked(which)) { toast(`Locked — earn ${Game.SCENE_UNLOCK[which] || 0}★ in Experiments to open this scene`); return false; }
+    if (!runBuiltScene(e, (policy) => buildSceneInto(e, which, policy))) return false;
     lsSet('omni:sandlab:seen', true); setDemoOffer(false); toast(which === 'volcano' ? 'Volcano & Lake built' : which === 'electrolysis' ? 'Electrolysis Rig built' : which === 'golden' ? 'Golden Rain built \u2014 watch the layers mix' : 'The Bench built \u2014 burner lit at level 2');
+    return true;
   };
   const buildExperiment = (exp) => {
     if (!exp) return;
@@ -1921,21 +2181,24 @@ export function MatterLab(props) {
     const e0 = engine(); expSetupTickRef.current = e0 ? e0.tick : null;
     if (exp.setup === 'chill') {
       const e = engine(); if (!e) return;
-      snapshot(); e.clear(); const C = e.cols, R = e.rows;
-      const P = (k, x, y, r, o) => e.paint(x, y, r, (BY_KEY.get(k) || {}).id || 0, o);
-      for (let x = 8; x < C - 8; x += 3) P('stone', x, R - 14, 2);
-      let BW = 26, BH = 18;
-      try { const st = e._stampFor('beaker-m'); if (st) { BW = st.w; BH = st.h; } } catch { /* defaults */ }
-      const bx = Math.floor(C * 0.4), by = R - 14;
-      const bk = e.placeObject('beaker-m', bx, by - 6 - BH);
-      if (bk != null) {
-        const coil = e.placeObject('cooling-coil', bx + Math.floor(BW / 2) - 3, by - 10);
-        if (coil != null && typeof e.setObjectLevel === 'function') e.setObjectLevel(coil, 3);
-        P('water', bx + Math.floor(BW / 2), by - 16, Math.max(4, Math.floor(BW / 3)));
-      }
+      const built = runBuiltScene(e, (policy) => {
+        const C = e.cols, R = e.rows;
+        const P = (k, x, y, r, o) => policy.paint(x, y, r, (BY_KEY.get(k) || {}).id || 0, o);
+        let BW = 26, BH = 18;
+        try { const st = e._stampFor('beaker-m'); if (st) { BW = st.w; BH = st.h; } } catch { /* defaults */ }
+        for (let x = 8; x < C - 8; x += 3) P('stone', x, R - 14, 2);
+        const bx = Math.floor(C * 0.4), by = R - 14;
+        const bk = policy.placeObject('beaker-m', bx, by - 6 - BH);
+        if (bk != null) {
+          const coil = policy.placeObject('cooling-coil', bx + Math.floor(BW / 2) - 3, by - 10);
+          if (coil != null && typeof e.setObjectLevel === 'function') e.setObjectLevel(coil, 3);
+          P('water', bx + Math.floor(BW / 2), by - 16, Math.max(4, Math.floor(BW / 3)));
+        }
+      });
+      if (!built) { expActiveRef.current = null; setExpActive(null); return; }
       toast('Experiment set up: ' + exp.name); return;
     }
-    buildDemo(exp.setup, true);
+    if (!buildDemo(exp.setup, true)) { expActiveRef.current = null; setExpActive(null); }
   };
   /* UI-B named SAVE SLOTS (matterlab:slots). New saves are compact ML2
      archives (version, summary + checksum); raw legacy slots are still read
@@ -1969,7 +2232,7 @@ export function MatterLab(props) {
     try {
       const archive = typeof slot.data === 'string' ? await decodeSceneCode(slot.data) : { scene: slot.data, name: slot.name };
       if (!isSceneData(archive.scene)) { toast('That save is not a valid Matter Lab scene'); return; }
-      if (!replaceSceneWithUndo(e, archive.scene)) { toast('That save could not be loaded'); return; }
+      if (!replaceSceneWithUndo(e, archive.scene)) return;
       toast(`Loaded “${archive.name || slot.name}”`);
     } catch { toast(`Could not read “${slot.name}” — the save may be damaged`); }
   };
@@ -1998,28 +2261,81 @@ export function MatterLab(props) {
   };
   const saveRecipe = (slot) => { const r = { ...recipes, [slot]: { at: Date.now(), steps: recipeRef.current } }; setRecipes(r); lsSet(LS.recipes, r); toast(`Recipe saved in slot ${slot + 1} (${recipeRef.current.length} steps)`); };
   const replayRecipe = (slot) => {
-    const e = engine(); const r = recipes[slot]; if (!e || !r) return;
+    const e = engine(); const recipe = recipes[slot];
+    if (!e || !recipe || recipeReplayRef.current) return;
+    const steps = Array.isArray(recipe.steps) ? recipe.steps.slice(0, 500) : [];
     if (e.stats().particles > 0 && !window.confirm('Replay clears the current world. Continue?')) return;
-    e.clear(); let i = 0; setPaused(false);
-    const iv = setInterval(() => {
-      if (i >= r.steps.length) { clearInterval(iv); toast('Recipe replay done'); return; }
-      const s = r.steps[i++];
+    let before;
+    try { before = e.serialize(); } catch { toast('Could not snapshot the current world'); return; }
+    const session = sandboxSessionRef.current;
+    const fieldKit = session?.mode === 'field-kit';
+    const creditsBefore = session?.credits || 0;
+    const replay = {
+      timer: null,
+      finished: false,
+      cancel: (message = 'Recipe replay cancelled', notify = true) => {
+        if (replay.finished) return false;
+        replay.finished = true;
+        clearInterval(replay.timer);
+        if (recipeReplayRef.current === replay) recipeReplayRef.current = null;
+        let restored = false;
+        try { restored = e.deserialize(before) !== false; } catch { /* best-effort rollback */ }
+        if (restored && fieldKit && sandboxSessionRef.current === session) {
+          sandboxSessionRef.current = createSandboxSession('field-kit', creditsBefore);
+          Game.setSandboxState(sandboxSessionRef.current.snapshot());
+          if (notify) syncSandboxStatus(true);
+        }
+        if (notify) {
+          syncDeserializedScene(e);
+          toast(restored ? message : 'Recipe stopped, but the previous world could not be restored');
+        }
+        return restored;
+      },
+    };
+    recipeReplayRef.current = replay;
+    try { e.clear(); } catch { replay.cancel('Could not clear the world for recipe replay'); return; }
+    let i = 0;
+    setPaused(false);
+    replay.timer = setInterval(() => {
+      if (sandboxSessionRef.current !== session) { replay.cancel('Recipe replay stopped because the sandbox mode changed'); return; }
+      if (i >= steps.length) {
+        let after;
+        try { after = e.serialize(); } catch { replay.cancel('Could not save the completed recipe scene'); return; }
+        if (!sceneSwapRef.current.recordReplacement(before, after)) { replay.cancel('Could not add recipe replay to scene history'); return; }
+        replay.finished = true;
+        clearInterval(replay.timer);
+        if (recipeReplayRef.current === replay) recipeReplayRef.current = null;
+        undoRef.current.clear(); redoRef.current.clear();
+        syncDeserializedScene(e);
+        if (fieldKit) syncSandboxStatus(true);
+        toast('Recipe replay done');
+        return;
+      }
+      const step = steps[i++];
       try {
-        if (s.t === 'paint') e.paint(s.x, s.y, s.r || 4, (BY_KEY.get(s.key) || {}).id || 0);
-        else if (s.t === 'gear') e.placeObject(s.kind, s.x, s.y);
-        else if (s.t === 'heat') e.heatBrush(s.x, s.y, s.r || 6, 120);
-        else if (s.t === 'cool') e.coolBrush(s.x, s.y, s.r || 6, 120);
-        else if (s.t === 'stir') e.stir(s.x, s.y, s.r || 6);
-        else if (s.t === 'spark') e.sparkAt(s.x, s.y);
-        else if (s.t === 'blast') e.blast(s.x, s.y, s.r || 14);
-      } catch { /* step skipped */ }
+        if (!step || typeof step !== 'object') return;
+        if (step.t === 'paint') {
+          const id = (BY_KEY.get(step.key) || {}).id || 0;
+          const result = paintWithSandboxPolicy(e, session, step.x, step.y, step.r || 4, id, {}, SUBSTANCES[id] || SUBSTANCES[1]);
+          if (result.blocked > 0) { replay.cancel('Field Kit supply ran out; recipe replay was rolled back'); return; }
+          if (fieldKit && result.changed) syncSandboxStatus(false);
+        } else if (step.t === 'gear') {
+          const result = placeGearWithSandboxPolicy(e, session, step.kind, step.x, step.y);
+          if (result.blocked) { replay.cancel('Field Kit supply ran out; recipe replay was rolled back'); return; }
+          if (fieldKit && result.id != null) syncSandboxStatus(false);
+        } else if (step.t === 'heat') e.heatBrush(step.x, step.y, step.r || 6, 120);
+        else if (step.t === 'cool') e.coolBrush(step.x, step.y, step.r || 6, 120);
+        else if (step.t === 'stir') e.stir(step.x, step.y, step.r || 6);
+        else if (step.t === 'spark') e.sparkAt(step.x, step.y);
+        else if (step.t === 'blast') e.blast(step.x, step.y, step.r || 14);
+      } catch { /* malformed or unsupported steps are skipped */ }
     }, 60); // ~2x feel: dense steps, sim running
   };
   const markSceneShared = () => { Game.setFlag('shared'); const d = Game.awardAchievement('first-share'); if (d) announceAch(d); };
   const applyImportedArchive = (archive) => {
     const e = engine();
     if (!e || !archive || !isSceneData(archive.scene)) { toast('That file did not contain a valid Matter Lab scene'); return false; }
-    if (!replaceSceneWithUndo(e, archive.scene)) { toast('That scene could not be loaded'); return false; }
+    if (!replaceSceneWithUndo(e, archive.scene)) return false;
     const title = archive.name && archive.name !== 'Imported scene' ? `“${archive.name}”` : 'scene';
     toast(archive.legacy ? 'Scene imported · older format' : `Imported ${title} · archive verified`);
     return true;
@@ -2144,7 +2460,18 @@ export function MatterLab(props) {
     if (vv) { vv.addEventListener('resize', setVh); vv.addEventListener('scroll', setVh); }
     return () => { window.removeEventListener('resize', setVh); window.removeEventListener('orientationchange', setVh); if (vv) { vv.removeEventListener('resize', setVh); vv.removeEventListener('scroll', setVh); } };
   }, []);
-  const setGyroOn = (on) => { setGyro(on); gyroOnRef.current = on; if (!on) { const e = engine(); if (e) { e.setGravityVector(0, 1, 1); gravDirRef.current = 0; setGravDir(0); } } };
+  const setGyroOn = (on) => {
+    setGyro(on); gyroOnRef.current = on;
+    if (!on) {
+      const e = engine();
+      if (e) {
+        const strength = sandboxGravityStrength(sandboxModeRef.current, powerRef.current);
+        e.setGravityVector(0, 1, Math.min(1, strength));
+        e.setGravityStrength(strength);
+        gravDirRef.current = 0; setGravDir(0);
+      }
+    }
+  };
   const toggleGyro = async () => {
     if (gyro) { setGyroOn(false); toast('Gyro gravity off'); return; }
     try {
@@ -2229,7 +2556,17 @@ export function MatterLab(props) {
     lsSet('omni:sandlab:neutral', neutralRef.current);
     toast('Calibrated — this pose is now neutral (gravity straight down)');
   };
-  const setGrav = (d) => { if (gyroOnRef.current) setGyroOn(false); setGravDir(d); gravDirRef.current = d; const e = engine(); if (e) { const V = [[0, 1], [0, -1], [-1, 0], [1, 0]][d & 3]; e.setGravityVector(V[0], V[1], 1); e.setGravityStrength(powerRef.current ? 4 : 1); } };
+  const setGrav = (d) => {
+    if (gyroOnRef.current) setGyroOn(false);
+    setGravDir(d); gravDirRef.current = d;
+    const e = engine();
+    if (e) {
+      const V = [[0, 1], [0, -1], [-1, 0], [1, 0]][d & 3];
+      const strength = sandboxGravityStrength(sandboxModeRef.current, powerRef.current);
+      e.setGravityVector(V[0], V[1], Math.min(1, strength));
+      e.setGravityStrength(strength);
+    }
+  };
 
   /* ---------------- V2: launch modes (shell contract) ---------------- */
   useEffect(() => {
@@ -2237,8 +2574,10 @@ export function MatterLab(props) {
     const n = launch.nonce;
     if (n != null && processedNonceRef.current === n) return;
     processedNonceRef.current = n;
+    if (launch.sandboxMode) applySandboxMode(launch.sandboxMode, false);
     if (launch.mode === 'gallery') { if (launch.sceneId) buildDemo(launch.sceneId); openSheet('scenes'); }
     else if (launch.mode === 'experiments') { const ex = launch.experimentId ? MATTER_EXPERIMENTS.find((x) => x.id === launch.experimentId) : null; if (ex) buildExperiment(ex); openSheet('experiments'); }
+    else if (launch.mode === 'challenges') openSheet('challenges');
     else if (launch.mode === 'custom') { setShowCreate(true); openPanel(); }
     else if (launch.mode === 'continue') { const slots = Game.loadSlots(); if (slots.length) { const latest = slots.reduce((a, b) => ((b.at || 0) > (a.at || 0) ? b : a), slots[0]); loadSlot(latest); } }
     // 'free' (and anything unknown): normal tool, nothing to do
@@ -2260,7 +2599,7 @@ export function MatterLab(props) {
       else if (ev.key === 'f' || ev.key === 'F') { if (kbRef.current.toggleFs) kbRef.current.toggleFs(); }
       else if ((ev.key === 'h' || ev.key === 'H') && onHome) onHome();
       else if (/^[1-9]$/.test(ev.key)) { const t2 = TOOLS[Number(ev.key) - 1]; if (t2) setTool(t2[0]); }
-      else if (ev.key === 'm' || ev.key === 'M') setSpeedI((s2) => (s2 + 1) % SPEEDS.length);
+      else if (ev.key === 'm' || ev.key === 'M') cycleSpeed();
       else if (ev.key === 'p' || ev.key === 'P') setPicker((p2) => !p2);
       else if (ev.key === 'g' || ev.key === 'G') setSideOpen((s2) => !s2);
     };
@@ -2345,7 +2684,7 @@ export function MatterLab(props) {
       setViewMode: (m) => { if (['normal', 'heat', 'pressure', 'flow'].includes(m)) setViewMode(m); },
       viewMode: () => viewModeRef.current,
       /* P4 + UI-B additions */
-      game: () => ({ stars: Game.getStars(), totalStars: Game.totalStars(), discoveries: Game.namedDiscoveries(), discoveryCount: Game.discoveryCount(), namedTotal: NAMED_REACTIVE_COUNT, achievements: Game.getAchievements(), rxTotal: Game.getRxTotal(), daily: { key: Game.dateKey(), tpl: Game.dailyFor().id, state: Game.getDailyState(), status: dailyStatus }, slots: slots.map((s) => ({ id: s.id, name: s.name, at: s.at, parts: s.parts })) }),
+      game: () => ({ stars: Game.getStars(), totalStars: Game.totalStars(), discoveries: Game.namedDiscoveries(), discoveryCount: Game.discoveryCount(), namedTotal: NAMED_REACTIVE_COUNT, achievements: Game.getAchievements(), rxTotal: Game.getRxTotal(), daily: { key: Game.dateKey(), tpl: Game.dailyFor().id, state: Game.getDailyState(), status: challengeStatus?.daily }, weekly: { key: Game.weeklyKey(), tpl: Game.weeklyFor().id, status: challengeStatus?.weekly }, challengeSummary: Game.getChallengeSummary(), challengeActivity: { daily: [...Game.getChallengeActivity().dailyReactions], weekly: [...Game.getChallengeActivity().weeklyReactions] }, sandbox: { ...sandboxSessionRef.current.snapshot() }, slots: slots.map((s) => ({ id: s.id, name: s.name, at: s.at, parts: s.parts })) }),
       deltaStats: () => ({ undoSteps: undoRef.current.length, redoSteps: redoRef.current.length, undoBytes: undoRef.current.totalBytes(), redoBytes: redoRef.current.totalBytes(), sceneUndo: !!sceneSwapRef.current.before, sceneRedo: !!sceneSwapRef.current.after, lastStepBytes: undoRef.current.lastBytes, lastFullBytes: undoRef.current.lastFullBytes }),
       touchState: () => ({ level: touchLevelRef.current, brush: brushRef.current, touchBrush: effectiveBrushRadius(brushRef.current, touchLevelRef.current, 'touch'), mouseBrush: effectiveBrushRadius(brushRef.current, touchLevelRef.current, 'mouse') }),
       setTouchLevel: (level) => { applyTouchLevel(level); return touchLevelRef.current; },
@@ -2383,6 +2722,11 @@ export function MatterLab(props) {
      clears the unread badge. */
   const openMessages = () => { setPicker(false); setSideOpen(false); setSheet('log'); setUnread(0); };
   useEffect(() => { msgsOpenRef.current = sheet === 'log'; if (sheet === 'log') setUnread(0); }, [sheet]);
+  useEffect(() => {
+    if (!paused || !sndRef.current) return;
+    sndRef.current.setAmbient({});
+    sndRef.current._silenceLoops();
+  }, [paused]);
   const toggleSide = () => { setSideOpen((o) => { if (!o) { setPicker(false); setSheet(''); } return !o; }); };
   const pickAndClose = (s) => { pickSubstance(s); setPicker(false); if (s && s.cls === 'liquid') setPourKey((k) => k + 1); }; // UI-A: pour micro-animation on liquid picks (visual only)
   const openDockTab = (tab) => {
@@ -2492,13 +2836,21 @@ export function MatterLab(props) {
           paused={paused}
           onTogglePause={() => setPaused(!paused)}
           speedLabel={`${(powerOn ? 10 : 1) * SPEEDS[speedI]}×`}
-          onCycleSpeed={() => setSpeedI((speedI + 1) % SPEEDS.length)}
+          onCycleSpeed={cycleSpeed}
           onMenu={() => openSheet('menu')}
           menuBadge={unread}
           stats={`${SUBSTANCE_COUNT} substances · ${parts.toLocaleString()} particles · ${fps} FPS · Tier ${tierI + 1} ${gridDims.cols}×${gridDims.rows}`}
         />
       )}
       {tierNote && !fsMode && <p className="dim sm" style={{ margin: 0 }}>{tierNote}</p>}
+      {!sheet && !picker && !dataCard && !sideOpen && (() => {
+        const activeMode = sandboxMode(sandboxModeId);
+        return <div className="ml-mode-status" data-sandbox-status={sandboxModeId}>
+          <b>{activeMode.icon} {activeMode.name}</b>
+          <span>{sandboxModeId === 'field-kit' ? `Supply ${sandboxStatus.credits.toLocaleString()} / ${sandboxStatus.cap.toLocaleString()} credits` : activeMode.description}</span>
+          <button type="button" className="btn ghost sm" onClick={() => setSideOpen(true)}>Change mode</button>
+        </div>;
+      })()}
       {simError && (
         <div className="glass" role="alert" style={{ padding: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', border: '1px solid var(--amber, #e8a13a)' }}>
           <span className="sm" style={{ flex: 1, minWidth: 180 }}>Simulation paused — something glitched. Your scene is safe.</span>
@@ -2529,7 +2881,7 @@ export function MatterLab(props) {
 
       {/* canvas stage — full-bleed; side rail + expanded panel float over it */}
       <div ref={boxRef} className="ml-stage" style={{ position: 'relative', flex: fsMode ? 1 : '0 0 auto', height: fsMode ? undefined : 'calc(var(--ml-vh, 100dvh) - 198px)', minHeight: fsMode ? undefined : 300 }}>
-        <canvas ref={canvasRef} style={{ touchAction: 'none', userSelect: 'none' }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { ptrRef.current = null; dragRef.current = null; dragCandRef.current = null; ptrMapRef.current.clear(); pinchRef.current = null; }}
+        <canvas ref={canvasRef} style={{ touchAction: 'none', userSelect: 'none' }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { ptrRef.current = null; dragRef.current = null; dragCandRef.current = null; ptrMapRef.current.clear(); pinchRef.current = null; if (sndRef.current) for (const cls of ['pour', 'pour-oil', 'pour-grain']) sndRef.current.setLoop(cls, 0); }}
           onWheel={(ev) => {
             // Wheel zoom (all devices) — pinch-zoom on mobile, wheel on
             // desktop (ctrl/meta keeps it explicit); setView stays the single
@@ -2648,7 +3000,7 @@ export function MatterLab(props) {
           );
         })()}
         {/* expanded side panel: ALL tools + sim controls (never overlaps the bottom panel — mutual exclusion) */}
-        <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedI} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} perf={{ device: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, applyCap: applyPerfCap, adaptive: { ...adaptiveStatus, setAuto: setAdaptiveAuto, setTier: selectAdaptiveTier } }} power={powerOn} setPower={applyPower} />
+        <SettingsPanel open={sideOpen} onClose={() => setSideOpen(false)} tools={TOOLS} speeds={SPEEDS} allowedSpeedIndices={allowedSpeedIndices()} tool={tool} setTool={setTool} cloneRef={cloneRef} brush={brush} setBrush={setBrush} shape={shape} setShape={setShape} paused={paused} setPaused={setPaused} engine={engine} handleSimError={handleSimError} undo={undo} clearWorld={clearWorld} speedI={speedI} setSpeedI={setSpeedPolicy} sandboxModeId={sandboxModeId} sandboxModes={SANDBOX_MODE_LIST} sandboxStatus={sandboxStatus} onSandboxModeChange={applySandboxMode} soundOn={soundOn} applySound={applySound} spatialAudioOn={spatialAudioOn} applySpatialAudio={applySpatialAudio} viewMode={viewMode} setViewMode={setViewMode} textureOn={textureOn} setTextureOn={setTextureOn} texQuality={texQuality} setTexQualityQ={setTexQualityQ} rendererPref={rendererPref} applyRendererPref={applyRendererPref} rendererNote={rendererNote} heatRamp={heatRamp} applyHeatRamp={applyHeatRamp} zoom={zoom} setView={setView} viewRef={viewRef} fontScale={fontScale} applyFontScale={applyFontScale} hapticsOn={hapticsOn} applyHaptics={applyHaptics} openMessages={openMessages} unread={unread} openSheet={openSheet} recipeLen={recipeLen} selObj={selObj} applyObjLevel={applyObjLevel} vesselKinds={VESSEL_KINDS} fixedSizeKinds={FIXED_SIZE_KINDS} refreshSel={refreshSel} removeSelObj={removeSelObj} applyObjScale={applyObjScale} toggleObjLock={toggleObjLock} duplicateSelObj={duplicateSelObj} gyro={gyro} gravDir={gravDir} setGrav={setGrav} toggleGyro={toggleGyro} calibrateGyro={calibrateGyro} muted={muted} setMuted={setMuted} perf={{ device: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, applyCap: applyPerfCap, adaptive: { ...adaptiveStatus, setAuto: setAdaptiveAuto, setTier: selectAdaptiveTier } }} power={powerOn} setPower={applyPower} />
       </div>
 
       {/* RECONCILIATION (PR#4 x FEEL fix 6): mutual exclusion — when gear is
@@ -2752,6 +3104,7 @@ export function MatterLab(props) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
                 <button className="btn ghost sm" onClick={() => openSheet('scenes')}>Scenes, save slots &amp; share codes</button>
                 <button className="btn ghost sm" onClick={() => openSheet('experiments')}>Experiments</button>
+                <button className="btn ghost sm" onClick={() => openSheet('challenges')}>Daily &amp; weekly challenges</button>
                 <button className="btn ghost sm" onClick={() => openSheet('discoveries')}>Discovery log ({Game.discoveryCount()} / {NAMED_REACTIVE_COUNT.toLocaleString('en-IN')})</button>
                 <button className="btn ghost sm" onClick={() => openSheet('achievements')}>Achievements</button>
                 <button className="btn ghost sm" onClick={() => openSheet('recipes')}>Recipes ({recipeLen})</button>
@@ -2766,7 +3119,8 @@ export function MatterLab(props) {
                 <label className="btn ghost sm" style={{ textAlign: 'center', cursor: 'pointer' }}>Import scene file<input type="file" accept=".mlscene,.json,application/json,application/vnd.matter-lab.scene+json" style={{ display: 'none' }} onChange={(e) => { importJson(e.target.files?.[0]); e.target.value = ''; }} /></label>
                 <button className="btn ghost sm" onClick={exportPng}>Export PNG snapshot</button>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center' }} className="sm"><input type="checkbox" checked={muted} onChange={(e) => setMuted(e.target.checked)} /> Mute reaction cards</label>
-                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }} className="sm"><input type="checkbox" checked={sfxEnabled()} onChange={(e) => { setSfxEnabled(e.target.checked); if (sndRef.current) sndRef.current.setEnabled(e.target.checked); }} /> Simulation &amp; app sounds (global)</label>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }} className="sm"><input type="checkbox" checked={soundOn} onChange={(e) => applySound(e.target.checked)} /> Simulation &amp; app sounds (global)</label>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }} className="sm"><input type="checkbox" checked={spatialAudioOn} disabled={!soundOn} onChange={(e) => applySpatialAudio(e.target.checked)} /> Spatial positioning</label>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center' }} className="sm"><input type="checkbox" checked={hapticsOn} onChange={(e) => applyHaptics(e.target.checked)} /> Haptics (vibration — also needs sounds on)</label>
               </div>
             </>)}
@@ -2857,6 +3211,17 @@ export function MatterLab(props) {
               </div>
               {rxLog.length === 0 ? <Empty t="No reactions yet — mix something!" icon="flask" /> : (rxMode === 'feed' ? groupedRx.map(({ entry, count }) => (<div key={entry.id}>{renderRxEntry(entry, 0)}{count > 1 && <span className="chip" data-rxcount={count} style={{ marginLeft: 6 }}>×{count} — same reaction repeated</span>}</div>)) : rxLog.filter((e2) => !e2.parentId || !rxLog.some((x) => x.id === e2.parentId)).map((e2) => renderRxEntry(e2, 0)))}
             </>)}
+            {sheet === 'challenges' && (() => {
+              const summary = challengeStatus?.summary || Game.getChallengeSummary(new Date());
+              const daily = challengeStatus?.daily || { challenge: Game.dailyFor(summary.today), done: summary.dailyDone };
+              const weekly = challengeStatus?.weekly || { challenge: Game.weeklyFor(summary.today), done: summary.weeklyDone };
+              return <>
+                <b>Challenge board — verified against this world</b>
+                <p className="dim sm" style={{ lineHeight: 1.5 }}>Daily challenges rotate at local midnight; weekly challenges rotate every Monday. Progress comes from live cell counts, temperatures, placed gear and named reactions observed in this simulation. Completion awards points once per period and records your streak.</p>
+                <ChallengeBoard daily={daily} weekly={weekly} summary={summary} />
+                <p className="dim sm" style={{ margin: '8px 0 0' }}>Completed: {summary.dailyCompleted} daily · {summary.weeklyCompleted} weekly. Current day: {summary.today} · week of {summary.week}.</p>
+              </>;
+            })()}
             {sheet === 'experiments' && (<>
               <b>Experiments — guided, with real checks</b>
               <p className="dim sm">Set up builds the scene for you. Objectives are scanned against the live world on the stats cadence — no fake ticks; a step only completes when the world really does it.</p>
@@ -2864,13 +3229,6 @@ export function MatterLab(props) {
                 <button className="btn ghost sm" style={{ marginLeft: 8 }} onClick={() => openSheet('discoveries')}>Discovery log</button>
                 <button className="btn ghost sm" onClick={() => openSheet('achievements')}>Achievements</button>
               </p>
-              {dailyStatus && (
-                <div className="glass" data-daily="1" style={{ padding: 10, borderRadius: 12, marginTop: 10 }}>
-                  <b className="sm">Daily challenge — {dailyStatus.tpl.name}</b>
-                  <p className="sm" style={{ margin: '4px 0 0' }}>{dailyStatus.tpl.text}</p>
-                  <p className="dim sm" style={{ margin: '4px 0 0' }}>{dailyStatus.done ? `✓ Done today · live now: ${dailyStatus.detail}` : `Not yet · ${dailyStatus.detail}`}</p>
-                </div>
-              )}
               {MATTER_EXPERIMENTS.map((ex) => { const locked = !Game.isExpUnlocked(ex.id, Game.totalStars()); const st = starsMap[ex.id] | 0; return (
                 <div key={ex.id} className="glass" style={{ padding: 10, borderRadius: 12, marginTop: 10, opacity: locked ? 0.65 : 1 }}>
                   <b className="sm">{ex.name}</b>

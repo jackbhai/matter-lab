@@ -18,13 +18,16 @@ fallback). Repo: jackbhai/matter-lab (branch: arena/6fc3b1a3-matter-lab).
 | v10–v12 | New physics: combustion chemistry, pressure & wind | big systems |
 | v13–v15 | Renderer realism: lights, shadows, refraction, ground | renderer features |
 | v16–v20 | Realism: waves, fluids, Females, Materials labs | realism features |
-| v21–v25 | Low-end engine: adaptive tiers, GPU fallbacks, 2GB-safe | perf features |
-| v26–v30 | Mobile-first: touch UI, low-end profiles, 2GB-safe | mobile features |
-| v31–v35 | Save/share, challenges, sandbox modes | product features |
-| v36–v40 | Sound design: engine + reactions (fire, liquid, gas) | audio features |
-| v41–v45 | Accessibility: keyboard, screen reader, high contrast | a11y features |
-| v46–v50 | Polish: better tips, deep UX review, polish tests | polish (medium-large) |
-| v51–v60 | New physics: radiation, chaos & constants, more chemistry | 10 more physics systems |
+| v21–v23 | Low-end engine: adaptive tiers, GPU fallbacks, 2GB-safe | performance features |
+| v24–v25 | Mobile-first: touch controls and precision levels | mobile interaction |
+| v26 | Portable scene archives | product feature |
+| v27 | Daily and weekly challenges | game systems |
+| v28 | Sandbox modes and finite Field Kit supply | play modes |
+| v29 | Spatial audio and engine sound design | audio systems |
+| v30 | Sound design: reactions (fire, liquid, gas) | audio features |
+| v31–v33 | Accessibility: keyboard, screen reader, high contrast | accessibility features |
+| v34–v35 | Polish: better tips, deep UX review, polish tests | polish (medium-large) |
+| v36–v40 | New physics: radiation, chaos & constants, more chemistry | 10 more physics systems |
 
 ---
 
@@ -181,42 +184,190 @@ Goal: 2GB RAM safe at quality=0. Files: gl-renderer.js, sandlab.jsx.
 Realism: 2GB phone runs at quality=0.
 Low-end: quality=0 on 2GB.
 
-## v24 — Mobile-first: Touch UI (new, MEDIUM)
+## v24 — Mobile-first: Touch UI (DONE — thumb-first controls and continuous strokes)
 
-Goal: touch-first controls. Files: sandlab.jsx (pointer events), styles.
-Realism: touch-optimized (2D cell safe).
-Low-end: all touch.
+**Intent:** Make the simulation practical to operate one-handed on phones without
+changing the engine grid, weakening the existing two-pointer camera gestures, or
+making mouse/stylus input feel less precise.
 
-## v25 — Mobile-first: Touch Levels (new, MEDIUM)
+**Integrated implementation:**
+- `src/ui/TouchActionBar.jsx` adds a narrow-screen/coarse-pointer toolbar for
+  Undo, Redo, brush decrement/increment, live brush size, and the active touch
+  profile. Buttons have accessible action names and 44 px minimum targets.
+- `src/tools/sandlab.jsx` wires the toolbar to the same undo/redo stacks and
+  brush state as the desktop UI. Touch pointer identity now travels through the
+  real paint, spray, dropper, erase, heat, cool, stir, and shape paths. Touch
+  strokes fill gaps between sparse pointer-move events; object interaction,
+  pinch zoom/pan, zoom reset, spark flick, and the two-finger redo gesture keep
+  their existing meanings.
+- `src/styles/panels.css` makes the action strip responsive, wraps it safely on
+  very narrow screens, and lays out the profile cards as a mobile sheet.
+- `src/core/touch-controls.js` owns tested, bounded input helpers, so the React
+  component and canvas use the same radius, interpolation, and tap rules.
 
-Goal: touch levels (easy, medium, hard). Files: sandlab.jsx.
-Realism: touch levels meaningful.
-Low-end: touch levels optimized.
+**Acceptance and tests:** `tests/touch-controls.test.js` proves accessible
+profile lookup, touch-only brush scaling, gap-filling endpoints, bounded work
+for large pointer jumps, and the single-/two-finger double-tap rules. Desktop
+mouse and pen keep their exact base brush radius. The existing pinch/pan and
+canvas paths remain the app's production handlers; no parallel demo controls.
 
-## v26 — Save/Share (new, MEDIUM)
+## v25 — Mobile-first: Touch Levels (DONE — Easy / Medium / Hard assistance)
 
-Goal: scene save/share. Files: game/game.js, sandlab.jsx.
-Realism: saves work.
-Low-end: saves on 2GB.
+**Intent:** Make touch difficulty a real, explainable precision setting rather
+than a label. The profile is persisted in `matterlab:touch-level`, exposed from
+the touch action strip and the main menu, and affects finger input only.
 
-## v27 — Challenges (new, MEDIUM)
+**Profile contract (`src/core/touch-controls.js`):**
+- **Easy:** 1.30× brush radius, 0.62-cell interpolation spacing, 460 ms / 64 px
+  one- or two-finger double-tap window. Larger targets in world space and denser
+  gap filling forgive less accurate thumbs and less frequent touch events.
+- **Medium (default):** 1.00× radius, 1-cell spacing, 350 ms / 48 px gestures.
+- **Hard:** 0.72× radius, 1.45-cell spacing, 260 ms / 30 px gestures for more
+  exact placement and less accidental undo/redo. All radii remain clamped to
+  1–64 world cells. Stroke interpolation is capped at 256 points per move and
+  further scales down with brush footprint (minimum four points), protecting
+  low-memory phones from large-brush pointer bursts.
+- Profiles are read through `Game.getTouchLevel()` / `Game.setTouchLevel()`;
+  invalid or absent values safely resolve to Medium. Mouse and pen preserve the
+  requested radius and are not gap-interpolated by touch assistance.
 
-Goal: daily challenges. Files: game/game.js, sandlab.jsx.
-Realism: challenges meaningful.
-Low-end: challenges on 2GB.
+**Acceptance and tests:** unit coverage asserts profile ordering, persistence
+fallback, radius clamping, interpolation density/endpoints/work caps, and the
+profile-dependent tap thresholds. The touch settings sheet describes the real
+behavior and shows the active choice; the quick toolbar reflects it immediately.
 
-## v28 — Sandbox Modes (new, MEDIUM)
+## v26 — Save/Share (DONE — portable, verified scene archives)
 
-Goal: sandbox modes. Files: sandlab.jsx (mode switcher).
-Realism: modes distinct.
-Low-end: sandbox modes work.
+**Intent:** Turn scene saving into a durable, inspectable, portable workflow
+while keeping the engine's established v1–v3 scene payloads unchanged.
 
-## v29 — Sound Design: Engine (new, MEDIUM)
+**Integrated implementation:**
+- `src/game/scene-archive.js` wraps a normal engine payload in a versioned
+  `matter-lab-scene` archive with a user-visible name, creation time, world
+  dimensions, particle/substance/object/body summary, and an FNV-1a integrity
+  checksum. New share codes use `ML2.G.` (gzip) or `ML2.R.` (raw fallback).
+  The decoder verifies the checksum and metadata before exposing the payload.
+- Imports enforce the engine's 1,024-dimension / 200,000-cell world ceiling,
+  8 MB decoded payload ceiling, bounded object/body lists, and bounded streaming
+  decompression. `.mlscene` JSON archives and legacy raw engine JSON are both
+  accepted; old `ML0.` and gzip `ML1.` share codes remain readable.
+- Named local saves store compressed ML2 codes (with a 12-slot cap); saving an
+  existing name updates that slot. Legacy numbered local slots remain
+  non-destructively readable. Each slot can load, use the platform share sheet
+  or clipboard, export a portable `.mlscene` file, rename, and delete.
+- `src/game/scene-history.js` provides a bounded, one-step `SceneSwapHistory`.
+  Current-world import validates before changing the engine; Undo/Redo then
+  restores the complete before/after scene, including grid dimensions, cells,
+  temperatures, lab gear and rigid bodies; ordinary brush strokes continue
+  using the existing compact delta-history path. Native Web Share is used where available, with a
+  clipboard/import-box fallback. Portable exports include metadata and a
+  checksum, while PNG export remains available.
+- `src/tools/sandlab.jsx`, `src/game/game.js`, `src/home/HomePage.jsx`'s
+  existing Continue route, and the scenes sheet all use the same live save
+  store and archive decoder; the package is not an isolated export utility.
 
-Goal: engine sound + 3D positioning. Files: src/core/matter-sound.js,
-gl-renderer.js.
-Realism: engine sound + positional.
-Low-end: sound off on 2GB.
+**Acceptance and tests:** `tests/scene-archive.test.js` covers package/file
+round trips, checksum and size rejection, ML0/ML1 compatibility, ML2 encoding,
+and a real MatterEngine serialize → share → decode → deserialize round trip.
+`tests/scene-history.test.js` proves full-world load Undo/Redo restores grid size,
+cells and gear, while `tests/game-storage.test.js` covers touch-profile
+settings, same-name slot updates, save caps, storage failures, name limits and
+non-destructive legacy-slot migration. A 2 GB device
+still uses the existing safe cell/particle budgets; archive handling adds hard
+input/decompression bounds and does not require a new renderer or large asset.
+
+## v27 — Challenges (DONE — evidence-based daily and weekly labs)
+
+**Intent:** Add rotating, completable laboratory objectives that reward real
+play, without inventing progress or scanning the world once per challenge.
+
+**Integrated implementation:**
+- `src/game/challenges.js` defines a fixed, deterministic pool of 12 daily and
+  8 weekly assignments. Daily selection is keyed to the local calendar date;
+  weekly selection uses a Monday-start week key. Objectives cover live material
+  counts, temperatures, phase changes, apparatus, material variety, and distinct
+  named reactions.
+- One bounded `measureChallengeWorld` pass collects the material, temperature,
+  particle, variety, and object metrics used by both active boards. Named
+  reaction progress comes only from genuine named-reaction events emitted by
+  the engine integration.
+- `src/game/game.js` persists a bounded challenge ledger: daily/weekly distinct
+  reaction activity, idempotent period completions, 25-point daily and
+  100-point weekly rewards, and the current completion streak. Replaying the
+  same completion or reaction cannot inflate the score.
+- `src/ui/ChallengeBoard.jsx` and `src/home/HomePage.jsx` show live progress and
+  history; `src/tools/sandlab.jsx` runs the live checks and exposes the board
+  from the lab. Home can launch directly into the challenge lab.
+
+**Acceptance and tests:** `tests/challenges-modes.test.js` verifies stable
+rotation and week boundaries, evidence measured from a real MatterEngine,
+named-reaction deduplication, one-time rewards, streaks and completion counts.
+The scan uses the existing grid and remains bounded on the 2 GB-safe tiers.
+
+## v28 — Sandbox Modes (DONE — distinct environments and finite Field Kit)
+
+**Intent:** Make the sandbox's physical conditions and placement rules
+selectable, persistent, and explicit while retaining the same simulation
+engine and safe world limits.
+
+**Integrated implementation:**
+- `src/game/sandbox-modes.js` defines five modes: **Creative** (unlimited,
+  Earth gravity), **Field Kit** (Earth gravity and limited supply), **Moon Lab**
+  (one-sixth gravity and −10°C ambient), **Jupiter Lab** (enhanced gravity and
+  restricted speed), and **Deep-Freeze Chamber** (−25°C ambient). Mode policy
+  controls gravity, ambient temperature, Power Mode, and permitted simulation
+  speed; switching modes does not clear or rewrite the live world.
+- Field Kit has a 1,800-credit capacity and 1,200 starting credits. Material
+  cost is derived from substance metadata; successful gear placement and gear
+  duplication cost credits; changed paint, fill, shape, and clone cells are
+  metered, while erasing/repainting identical matter is free. Genuine reactions
+  replenish a small capped reward. Balance persists when visiting other modes.
+- Existing scenes must be adopted within the available budget on entry. Scene
+  imports, named demo/experiment builders, and timed recipe replay use the same
+  policy; failed budget-limited builds roll back the world and credits. A
+  one-step scene history records successful built replacements for Undo/Redo.
+- `src/ui/Settings.jsx` exposes mode, speed, power, and supply status. Scene
+  setup and direct gear actions share the same policy helpers, rather than
+  allowing a free placement path around the meter.
+
+**Acceptance and tests:** `tests/challenges-modes.test.js` checks persisted and
+clamped balances, mode boundary conditions, speed/power limits, material and
+gear charges, free removals, reaction rewards, serialized-scene costing, and
+successful/blocked gear duplication. `tests/scene-history.test.js` verifies
+Undo/Redo for already-built replacements. The implementation retains the
+existing engine particle and 2 GB world-cell guardrails.
+
+## v29 — Spatial Audio: Engine (DONE — camera-aware positional sound)
+
+**Intent:** Connect real engine events to a scene-relative sound field, with a
+graceful stereo fallback and user-controlled spatial processing.
+
+**Integrated implementation:**
+- `src/core/spatial-audio.js` normalizes world coordinates and current camera
+  focus/zoom into bounded pan, elevation, distance, gain, and air-absorption
+  values. It drives modern Web Audio `PannerNode` position parameters and the
+  legacy `setPosition` API where available; non-positioned/cinematic events
+  remain centered.
+- `src/core/matter-engine.js` now reports normalized X/Y for reaction sounds,
+  apparatus placement, and rate-limited paint/erase sounds. The accumulator
+  emits at most one averaged world source per sound class per simulation tick,
+  keeping event volume bounded.
+- `src/core/matter-sound.js` spatializes one-shots and continuous sources,
+  smooths camera-relative loop positions, applies distance/air filtering, and
+  falls back to stereo panning if 3D panning is unavailable. Sound and spatial
+  audio have independent controls in Settings; pause/hidden-tab handling
+  silences ambient loops. Existing low-end defaults keep sound disabled on the
+  2 GB-safe profile.
+
+**Acceptance and tests:** `tests/spatial-audio.test.js` covers normalization,
+source/listener mapping under zoom and pan, vertical/distance attenuation,
+modern and legacy panner APIs, live listener/toggle updates, and bounded,
+source-positioned MatterEngine brush/erase events. The Web Audio path adds no
+large assets and gracefully degrades when spatial nodes are unsupported.
+
+**Batch verification (2026-11-27):** `npm run test:tiers` passed all 39 tests;
+`npm run build` passed. Vite still reports the pre-existing missing `fonts.css`,
+large-chunk, and ineffective dynamic-import warnings.
 
 ## v30 — Sound Design: Reactions (new, MEDIUM)
 
@@ -273,8 +424,12 @@ Lower risk, polish, QoL, UX improvements. No major new systems.
 
 ## Implementation rules
 
-1. One version = one BIG upgrade. Verified after each (`npm run build` passes,
-   build size check, PR per version per branch).
-2. Onver: one branch per version: branch = arena/6fc3b1a3-matter-lab (NO merge).
-3. After each: build + push + update PR + STOP.
-4. Between versions, nothing stays small — even small things get BIG versions.
+1. Each version is a substantial, integrated upgrade: app-wired behavior,
+   behavior-proving tests, and documented acceptance criteria—not dead modules.
+2. Adjacent versions may ship as one batch when the requested work spans them;
+   keep the implementation coherent and identify each version's scope here.
+3. Use the active Arena session branch and its branch policy; do not hard-code a
+   branch name into the roadmap or create a second branch outside that flow.
+4. Verify the complete test suite and production build, review the diff, then
+   push and open/update the requested PR. Stop for review when asked; do not
+   merge a review PR unless the user explicitly requests it.

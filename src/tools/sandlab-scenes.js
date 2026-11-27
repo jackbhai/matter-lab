@@ -19,9 +19,12 @@ export const MATTER_EXPERIMENTS = [
   { id: 'golden', name: 'Golden Rain', goal: 'Mix lead nitrate solution with potassium iodide solution to precipitate golden lead iodide.', setup: 'golden', steps: ['Tap "Set up" — the two solutions sit layered in one beaker.', 'Stir the beaker contents (Stir tool) or tip the beaker so the layers mix.', 'Objective (checked live): more than 40 lead-iodide cells formed.'] },
   { id: 'chill', name: 'Chill to Freezing', goal: 'Freeze water with a level-3 cooling coil sitting inside the beaker.', setup: 'chill', steps: ['Tap "Set up" — a cooling coil at level 3 inside a beaker of water.', 'Wait — the coil pulls heat out of the water around it.', 'Objective (checked live): the water freezes (ice forms, or water reaches 0°C).'] },
 ];
-export function buildSceneInto(e, which) {
+export function buildSceneInto(e, which, policy = {}) {
   const C = e.cols, R = e.rows;
-  const P = (k, x, y, r, o) => e.paint(x, y, r, (BY_KEY.get(k) || {}).id || 0, o);
+  const paint = typeof policy.paint === 'function' ? policy.paint : (...args) => e.paint(...args);
+  const enginePlaceObject = e.placeObject.bind(e);
+  const placeObject = typeof policy.placeObject === 'function' ? policy.placeObject : enginePlaceObject;
+  const P = (k, x, y, r, o) => paint(x, y, r, (BY_KEY.get(k) || {}).id || 0, o);
   /* HOTFIX: gear stamps scale on narrow grids — demo placement must use the
      stamp's real size (defaults are the desktop sizes, so desktop scenes are
      byte-identical; on portrait the beaker no longer collides with the floor
@@ -36,15 +39,15 @@ export function buildSceneInto(e, which) {
   } else if (which === 'electrolysis') {
     for (let x = 8; x < C - 8; x += 3) P('stone', x, R - 14, 2);
     const bx = Math.floor(C * 0.38), by = R - 14;
-    const bk = e.placeObject('beaker-m', bx, by - 6 - BH);
+    const bk = placeObject('beaker-m', bx, by - 6 - BH);
     if (bk != null) { for (let yy = by - 32; yy < by - 18; yy += 2) for (let xx = bx + 5; xx < bx + 22; xx += 2) P('water', xx, yy, 1); }
-    e.placeObject('battery', bx + BW + 8, by - 8);
-    e.placeObject('electrode-carbon', bx + 6, by - 30);
-    e.placeObject('electrode-carbon', bx + 18, by - 30);
+    placeObject('battery', bx + BW + 8, by - 8);
+    placeObject('electrode-carbon', bx + 6, by - 30);
+    placeObject('electrode-carbon', bx + 18, by - 30);
   } else if (which === 'golden') {
     for (let x = 8; x < C - 8; x += 3) P('stone', x, R - 14, 2);
     const bx = Math.floor(C * 0.4), by = R - 14;
-    const bk = e.placeObject('beaker-m', bx, by - 6 - BH);
+    const bk = placeObject('beaker-m', bx, by - 6 - BH);
     if (bk != null) {
       for (let yy = by - 24; yy < by - 18; yy += 2) for (let xx = bx + 5; xx < bx + 22; xx += 2) P('lead-nitrate-sol', xx, yy, 1);
       for (let yy = by - 32; yy < by - 24; yy += 2) for (let xx = bx + 5; xx < bx + 22; xx += 2) P('potassium-iodide-sol', xx, yy, 1);
@@ -52,15 +55,15 @@ export function buildSceneInto(e, which) {
   } else {
     for (let x = 8; x < C - 8; x += 3) { P('stone', x, R - 14, 2); P('wood', x, Math.floor(R * 0.35), 2); }
     const bx = Math.floor(C * 0.4), by = R - 14;
-    const burner = e.placeObject('burner', bx + 4, by - 6);
+    const burner = placeObject('burner', bx + 4, by - 6);
     if (burner != null) { e.interactObject(burner); }
-    const bk = e.placeObject('beaker-m', bx, by - 6 - BH);
+    const bk = placeObject('beaker-m', bx, by - 6 - BH);
     if (bk != null) P('water', bx + 13, by - 30, 9);
-    e.placeObject('battery', Math.floor(C * 0.68), Math.floor(R * 0.35) - 6);
-    e.placeObject('electrode-carbon', Math.floor(C * 0.74), Math.floor(R * 0.35) - 8);
-    e.placeObject('electrode-copper', Math.floor(C * 0.78), Math.floor(R * 0.35) - 8);
-    e.placeObject('flask', Math.floor(C * 0.6), R - 34);
-    e.placeObject('thermometer', bx + 30, by - 26);
+    placeObject('battery', Math.floor(C * 0.68), Math.floor(R * 0.35) - 6);
+    placeObject('electrode-carbon', Math.floor(C * 0.74), Math.floor(R * 0.35) - 8);
+    placeObject('electrode-copper', Math.floor(C * 0.78), Math.floor(R * 0.35) - 8);
+    placeObject('flask', Math.floor(C * 0.6), R - 34);
+    placeObject('thermometer', bx + 30, by - 26);
   }
 }
 /* Real objective check against live engine state. Returns {done, detail}. */

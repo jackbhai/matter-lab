@@ -10,8 +10,9 @@ import { toast } from './kit.jsx';
 import { GEAR } from '../core/matter-engine.js';
 import * as Game from '../game/game.js';
 
-export default function SettingsPanel({ open, onClose, tools, speeds, tool, setTool, cloneRef, brush, setBrush, shape, setShape, paused, setPaused, engine, handleSimError, undo, clearWorld, speedI, setSpeedI, viewMode, setViewMode, textureOn, setTextureOn, texQuality, setTexQualityQ, rendererPref, applyRendererPref, rendererNote, heatRamp, applyHeatRamp, zoom, setView, viewRef, fontScale, applyFontScale, hapticsOn, applyHaptics, openMessages, unread, openSheet, recipeLen, selObj, applyObjLevel, vesselKinds, fixedSizeKinds, refreshSel, removeSelObj, applyObjScale, toggleObjLock, duplicateSelObj, gyro, gravDir, setGrav, toggleGyro, calibrateGyro, muted, setMuted, perf, power, setPower }) {
+export default function SettingsPanel({ open, onClose, tools, speeds, allowedSpeedIndices = [], tool, setTool, cloneRef, brush, setBrush, shape, setShape, paused, setPaused, engine, handleSimError, undo, clearWorld, speedI, setSpeedI, sandboxModeId, sandboxModes = [], sandboxStatus, onSandboxModeChange, soundOn, applySound, spatialAudioOn, applySpatialAudio, viewMode, setViewMode, textureOn, setTextureOn, texQuality, setTexQualityQ, rendererPref, applyRendererPref, rendererNote, heatRamp, applyHeatRamp, zoom, setView, viewRef, fontScale, applyFontScale, hapticsOn, applyHaptics, openMessages, unread, openSheet, recipeLen, selObj, applyObjLevel, vesselKinds, fixedSizeKinds, refreshSel, removeSelObj, applyObjScale, toggleObjLock, duplicateSelObj, gyro, gravDir, setGrav, toggleGyro, calibrateGyro, muted, setMuted, perf, power, setPower }) {
   if (!open) return null;
+  const activeSandboxMode = sandboxModes.find((mode) => mode.id === sandboxModeId);
   return (
     <div className="glass" data-sidepanel="1" style={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: 'min(264px, calc(100% - 16px))', zIndex: 7, overflowY: 'auto', padding: 10, borderRadius: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -34,6 +35,30 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
           <button key={s} className={`btn sm ${shape === s || (s === 'spray' && tool === 'spray') ? '' : 'ghost'}`} onClick={() => { if (s === 'spray') { setTool('spray'); } else { setShape(s); if (tool === 'spray') setTool('paint'); } }}>{s[0].toUpperCase() + s.slice(1)}</button>
         ))}
       </div>
+      <div className="seclabel" style={{ marginTop: 12 }}>Sandbox mode</div>
+      {activeSandboxMode && <p className="dim sm" style={{ margin: '3px 0 7px', lineHeight: 1.4 }}>{activeSandboxMode.description}</p>}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }} role="group" aria-label="Sandbox mode">
+        {sandboxModes.map((mode) => (
+          <button key={mode.id} type="button" className={`btn sm ${sandboxModeId === mode.id ? '' : 'ghost'}`} aria-pressed={sandboxModeId === mode.id} onClick={() => onSandboxModeChange?.(mode.id)}>
+            {mode.icon} {mode.shortName || mode.name}
+          </button>
+        ))}
+      </div>
+      {sandboxModeId === 'field-kit' && sandboxStatus && (
+        <div className="ml-field-kit-meter" aria-label={`Field Kit has ${sandboxStatus.credits} of ${sandboxStatus.cap} supply credits`}>
+          <div className="ml-field-kit-meter-head"><b>Field Kit supply</b><span>{sandboxStatus.credits.toLocaleString()} / {sandboxStatus.cap.toLocaleString()} cr</span></div>
+          <div className="ml-field-kit-meter-track" role="progressbar" aria-label="Field Kit supply remaining" aria-valuemin="0" aria-valuemax={sandboxStatus.cap} aria-valuenow={sandboxStatus.credits}>
+            <span style={{ width: `${sandboxStatus.cap ? Math.round(100 * sandboxStatus.credits / sandboxStatus.cap) : 0}%` }} />
+          </div>
+          <span className="dim sm">New material and gear use credits; live reactions replenish supply.</span>
+        </div>
+      )}
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 9 }} className="sm">
+        <input type="checkbox" checked={!!soundOn} onChange={(e) => applySound?.(e.target.checked)} /> Simulation &amp; app sound
+      </label>
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }} className="sm">
+        <input type="checkbox" checked={!!spatialAudioOn} disabled={!soundOn} onChange={(e) => applySpatialAudio?.(e.target.checked)} /> Spatial positioning
+      </label>
       <div className="seclabel" style={{ marginTop: 12 }}>Simulation</div>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         <button className="btn sm" onClick={() => setPaused(!paused)}>{paused ? 'Play' : 'Pause'}</button>
@@ -43,7 +68,7 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
       </div>
       <div style={{ display: 'flex', gap: 4, marginTop: 6, alignItems: 'center' }}>
         <span className="dim sm">Speed</span>
-        {speeds.map((s, i) => <button key={s} className={`btn sm ${speedI === i ? '' : 'ghost'}`} onClick={() => setSpeedI(i)}>{s}×</button>)}
+        {speeds.map((s, i) => <button key={s} className={`btn sm ${speedI === i ? '' : 'ghost'}`} aria-pressed={speedI === i} disabled={!allowedSpeedIndices.includes(i)} title={!allowedSpeedIndices.includes(i) ? 'This speed is not available in the current sandbox mode' : undefined} onClick={() => setSpeedI(i)}>{s}×</button>)}
       </div>
       <div className="seclabel" style={{ marginTop: 12 }}>View</div>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }} role="group" aria-label="View mode">
@@ -96,6 +121,7 @@ export default function SettingsPanel({ open, onClose, tools, speeds, tool, setT
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         <button className="btn ghost sm" onClick={openMessages}>Messages{unread > 0 ? ` (${unread} new)` : ''}</button>
         <button className="btn ghost sm" onClick={() => openSheet('experiments')}>Experiments</button>
+        <button className="btn ghost sm" onClick={() => openSheet('challenges')}>Daily &amp; weekly challenges</button>
         <button className="btn ghost sm" onClick={() => openSheet('discoveries')}>Discoveries ({Game.discoveryCount()})</button>
         <button className="btn ghost sm" onClick={() => openSheet('achievements')}>Achievements</button>
         <button className="btn ghost sm" onClick={() => openSheet('scenes')}>Scenes</button>

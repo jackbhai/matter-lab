@@ -22,7 +22,17 @@ export class SceneSwapHistory {
       try { engine.deserialize(previous); } catch { /* best-effort rollback */ }
       return false;
     }
-    this.before = previous;
+    let current;
+    try { current = engine.serialize(); } catch { try { engine.deserialize(previous); } catch { /* best-effort rollback */ } return false; }
+    return this.recordReplacement(previous, current);
+  }
+
+  /** Record a replacement built directly into the engine after a successful
+      transactional build, without serializing/deserializing the new scene a
+      second time. */
+  recordReplacement(previousScene, nextScene) {
+    if (!previousScene || !nextScene) return false;
+    this.before = previousScene;
     this.after = null;
     return true;
   }

@@ -1,22 +1,26 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import * as SandlabNS from './tools/sandlab.jsx';
 import { Toaster } from './ui/kit.jsx';
 import HomePage from './home/HomePage.jsx';
 import GlassShell from './ui/GlassShell.jsx';
 
-/* v2 shell: a real landing homepage is the default screen. Launching a mode
-   stores the launch config (fresh nonce per launch) and shows the tool;
-   the tool's onHome returns here in one tap. MatterLab is read through the
-   namespace so the shell never hard-fails on contract timing. */
+/* v2 shell: a real landing homepage is the default screen. Every launch
+   forwards its complete route payload (sandbox mode, challenge, scene or
+   experiment) with a monotonic nonce, so quick successive choices always
+   reach the tool as a fresh request. MatterLab is read through the namespace
+   so the shell never hard-fails on contract timing. */
 const MatterLab = SandlabNS.MatterLab;
 
 export default function App() {
   const [glass, setGlass] = useState(false);
   const [screen, setScreen] = useState('home');
   const [launch, setLaunch] = useState(null);
+  const launchSequence = useRef(0);
 
   const openTool = useCallback((cfg) => {
-    setLaunch({ ...(cfg || { mode: 'free' }), nonce: Date.now() });
+    const request = cfg && typeof cfg === 'object' ? cfg : { mode: 'free' };
+    launchSequence.current += 1;
+    setLaunch({ ...request, nonce: `${Date.now()}-${launchSequence.current}` });
     setScreen('tool');
   }, []);
   const goHome = useCallback(() => setScreen('home'), []);
