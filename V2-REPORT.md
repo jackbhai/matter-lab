@@ -5,7 +5,7 @@
 **Verification:** local gate 23/23 PASS (`scripts/verify-v2.mjs`), live gate PASS (`scripts/verify-live-v2.mjs`), 0 page errors at 360×740 and 412×915.
 
 ## Part A — Homepage + Modes
-- Real landing homepage is now the default screen: hand-drawn inline-SVG flask logo + "Matter Lab" wordmark + "By Jack Bhai", hero with verified numbers only (1,392 substances · 22,500+ named reactions · 100% pair-decision coverage · 27 placeable lab items · procedural sound), About/comparison section.
+- Real landing homepage is now the default screen: hand-drawn inline-SVG flask logo + "Matter Lab" wordmark + "By Jack Bhai", hero with verified numbers only (1,822 substances · 34,775 named reactions · 100% pair-decision coverage · 26 placeable lab items · procedural sound), About/comparison section.
 - Four mode cards, each launching a genuinely different tool configuration via `{mode, sceneId?, experimentId?, nonce}`:
   - **Free Sandbox** — the tool as-is.
   - **Experiments** — guided panel with 4 experiments (Boil Water, Electrolysis of Water, Golden Rain, Chill to Freezing), one-tap scene setup, numbered steps, and **real objective checking** for all 4, scanned against the live world (water ≥ 95 °C / hydrogen > 40 cells / lead-iodide > 40 cells / ice forms or water ≤ 0 °C). Verified live in the gate: "Objective complete — Hottest water: 99 °C / 95 °C". No fake ticks.

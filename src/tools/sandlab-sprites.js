@@ -7,6 +7,43 @@ const SPR = new Map();
 const mkC = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
 const sprGet = (key, maker) => { let v = SPR.get(key); if (!v) { try { v = maker(); } catch { v = null; } if (v) SPR.set(key, v); } return v; };
 export const bucket = (v) => Math.max(12, Math.round(v / 8) * 8);
+/* A real laboratory beaker: tapered flute + beaded rim + thicker bottom,
+   with a light gradient, a reflection streak and real graduation numbers. */
+function drawBeakerFlute(x, kind, bw, bh) {
+  const yTop = Math.max(4, Math.round(bh * 0.04));
+  const be = Math.max(3, Math.round(bh * 0.055)); // beading lip height
+  // Slightly tapered flute body (narrower at top, wider below the rim)
+  const t = kind === 'beaker-l' ? 0.10 : kind === 'beaker-m' ? 0.07 : 0.04;
+  x.beginPath();
+  x.moveTo(bw * 0.50, yTop - 0.5);
+  x.lineTo(bw * 0.50, bh - 2.5);
+  x.bezierCurveTo(bw * 0.50, bh - 2.5, bw * (0.5 - t / 2), bh - 1.5, bw * 0.28, bh - 2);
+  x.bezierCurveTo(bw * 0.28, bh - 2, bw * 0.25, bh - 2.2, bw * 0.25, bh * 0.96);
+  x.lineTo(bw * 0.25, bh - 2);
+  x.bezierCurveTo(bw * 0.25, bh - 2, bw * (0.5 + t / 2), bh - 2.5, bw * 0.75, bh - 2);
+  x.bezierCurveTo(bw * 0.75, bh - 2, bw * 0.78, bh - 1.5, bw * 0.50, bh - 2.5);
+  x.closePath();
+  x.fill();
+  // gradient: brighter at the top edge, thinner wall below
+  const g = x.createLinearGradient(bw * 0.45, 0, bw * 0.55, bh * 0.45);
+  g.addColorStop(0, 'rgba(230,250,255,0.25)'); g.addColorStop(0.6, 'rgba(205,238,248,0.42)');
+  g.addColorStop(1, 'rgba(175,225,242,0.12)');
+  const outer = x.createLinearGradient(0, yTop, 0, bh * 0.7);
+  outer.addColorStop(0, 'rgba(205,238,248,0.9)'); outer.addColorStop(0.75, 'rgba(175,225,242,0.75)');
+  outer.addColorStop(1, 'rgba(150,205,220,0.5)');
+  // Beading lip above the rim
+  x.fillStyle = 'rgba(200,232,242,0.85)'; x.beginPath(); x.moveTo(bw * 0.20, yTop - 0.3); x.lineTo(bw * 0.30, yTop - be - 0.5); x.lineTo(bw * 0.80, yTop - be - 0.5); x.lineTo(bw * 0.90, yTop - 0.3); x.lineTo(bw * 0.50, yTop); x.closePath(); x.fill();
+  x.strokeStyle = 'rgba(150,200,215,0.9)'; x.lineWidth = Math.max(1, bw * 0.006); x.beginPath(); x.moveTo(bw * 0.55, yTop - be); x.lineTo(bw * 0.55, yTop - 0.5); x.stroke();
+  // Reflection streak (light stripe near the left wall)
+  x.fillStyle = g;
+  x.beginPath(); x.moveTo(bw * 0.38, yTop + 8); x.lineTo(bw * 0.46, yTop + 3); x.lineTo(bw * 0.52, yTop + 40); x.lineTo(bw * 0.30, yTop + 45); x.closePath(); x.fill();
+  // Mild highlight along the rim edge
+  const rim = x.createLinearGradient(bw * 0.38, 0, bw * 0.62, 0);
+  rim.addColorStop(0, 'rgba(235,250,255,0.6)'); rim.addColorStop(1, 'rgba(200,232,242,0.1)');
+  x.fillStyle = rim; x.fillRect(bw * 0.38, yTop - 1.5, bw * 0.24, 1.6);
+  // Bottom beading
+  x.fillStyle = 'rgba(205,238,248,0.8)'; x.beginPath(); x.moveTo(bw * 0.22, bh - 3); x.bezierCurveTo(bw * 0.22, bh - 3 - bh * 0.006, bw * 0.5, bh - 3 - bh * 0.004, bw * 0.78, bh - 3); x.stroke();
+}
 export function glassSprite(kind, bw, bh) {
   return sprGet('glass|' + kind + '|' + bw + '|' + bh, () => {
     const c = mkC(bw, bh), x = c.getContext('2d');
@@ -19,6 +56,7 @@ export function glassSprite(kind, bw, bh) {
       else if (kind === 'testtube') { x.moveTo(3, 2); x.lineTo(3, bh - bw / 2); x.arc(bw / 2, bh - bw / 2, bw / 2 - 3, Math.PI, 0, true); x.lineTo(bw - 3, 2); }
       else if (kind === 'funnel') { x.moveTo(2, 2); x.lineTo(bw - 2, 2); x.lineTo(bw * 0.56, bh * 0.55); x.lineTo(bw * 0.56, bh - 2); x.lineTo(bw * 0.44, bh - 2); x.lineTo(bw * 0.44, bh * 0.55); x.closePath(); }
       else if (kind.startsWith('lid')) { x.rect(1, bh * 0.30, bw - 2, bh * 0.34); }
+      else if (kind.startsWith('beaker')) drawBeakerFlute(x, kind, bw, bh);
       else { x.rect(wall / 2 + 1, 2, bw - wall - 2, bh - 4); }
     };
     path(); x.fill(); x.stroke();
@@ -44,13 +82,22 @@ export function glassSprite(kind, bw, bh) {
 export function burnerSprite(bw, bh) {
   return sprGet('burner|' + bw + '|' + bh, () => {
     const c = mkC(bw, bh), x = c.getContext('2d');
-    x.fillStyle = '#2c313a'; x.beginPath(); x.ellipse(bw / 2, bh - bh * 0.10, bw * 0.46, bh * 0.11, 0, 0, 7); x.fill();
-    x.fillStyle = '#596270'; x.fillRect(bw * 0.30, bh * 0.55, bw * 0.40, bh * 0.36);
-    const g = x.createLinearGradient(bw * 0.42, 0, bw * 0.58, 0); g.addColorStop(0, '#79828f'); g.addColorStop(0.5, '#c7cedb'); g.addColorStop(1, '#79828f');
-    x.fillStyle = g; x.fillRect(bw * 0.42, bh * 0.10, bw * 0.16, bh * 0.52);
-    x.fillStyle = '#39404c'; x.fillRect(bw * 0.38, bh * 0.46, bw * 0.24, bh * 0.10);
-    x.fillStyle = '#8a6a20'; x.fillRect(bw * 0.06, bh * 0.66, bw * 0.26, bh * 0.09);
-    x.fillStyle = 'rgba(255,255,255,0.5)'; x.fillRect(bw * 0.46, bh * 0.12, bw * 0.03, bh * 0.46);
+    const cx = bw / 2;
+    // Pedestal + base plate (the horizontal bit the beaker sits on)
+    x.fillStyle = '#2c313a'; x.beginPath(); x.ellipse(cx, bh - bh * 0.10, bw * 0.46, bh * 0.11, 0, 0, 7); x.fill();
+    x.fillStyle = '#4a5260'; x.beginPath(); x.ellipse(cx, bh - bh * 0.22, bw * 0.40, bh * 0.06, 0, 0, 7); x.fill();
+    x.fillStyle = '#596270'; x.beginPath(); x.ellipse(cx, bh * 0.55, bw * 0.36, bh * 0.05, 0, 0, 7); x.fill();
+    // Burner tube: vertical pipe with the hot nozzle
+    x.fillStyle = '#3a4150'; x.beginPath(); x.ellipse(cx, bh * 0.47, bw * 0.42, bh * 0.025, 0, 0, 7); x.fill();
+    x.fillStyle = '#596270'; x.beginPath(); x.ellipse(cx, bh * 0.42, bw * 0.34, bh * 0.03, 0, 0, 7); x.fill();
+    // The outlet (rounded hole on top of the tube)
+    x.fillStyle = '#2c313a'; x.beginPath(); x.ellipse(cx, bh * 0.33, bw * 0.30, bh * 0.012, 0, 0, 7); x.fill();
+    // Burner ring (the hex ring around the chamber) with a swirly band
+    x.strokeStyle = '#c7cedb'; x.lineWidth = Math.max(1.5, bh * 0.13);
+    x.beginPath(); x.ellipse(cx, bh * 0.32, bw * 0.40, bh * 0.13, 0, 0, 7); x.stroke();
+    x.strokeStyle = '#a2acc0'; x.lineWidth = Math.max(1.5, bh * 0.09); x.beginPath(); x.ellipse(cx, bh * 0.30, bw * 0.46, bh * 0.10); x.stroke();
+    x.fillStyle = '#e0d4b8'; x.beginPath(); x.ellipse(cx, bh * 0.31, bw * 0.065, bh * 0.07, 0, 0, 7); x.fill();
+    x.fillStyle = 'rgba(255,255,255,0.5)'; x.fillRect(bw * 0.44, bh * 0.10, bw * 0.03, bh * 0.46); // pilot tube highlight
     return c;
   });
 }

@@ -366,10 +366,12 @@ export class GLRenderer {
   draw(e, opts, hotBands) {
     if (!this.ok || this.lost) return false;
     const gl = this.gl;
+    if (!gl) { this.ok = false; return false; }
     const T0 = performance.now();
     const { cols, rows, el, temp, aux, tint } = e;
     const n = cols * rows;
     const key = cols + 'x' + rows;
+    try {
     if (this._gridKey !== key || !this.buf0 || this.buf0.length !== n * 4) {
       this._gridKey = key;
       this.buf0 = new Uint8Array(n * 4);
@@ -474,6 +476,13 @@ export class GLRenderer {
     }
     gl.bindVertexArray(this.vao);
     gl.useProgram(this.prog);
+    this._lastError = null;
+    } catch (err) {
+      this._lastError = err;
+      this.ok = false;
+      if (this.onLost) { try { this.onLost(); } catch { /* noop */ } }
+      return false;
+    }
     const bind = (unit, tex, loc) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(loc, unit); };
     bind(0, this.tex.data0, this.u.uData0);
     bind(1, this.tex.data1, this.u.uData1);
