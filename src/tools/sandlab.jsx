@@ -1837,6 +1837,7 @@ export function MatterLab(props) {
       gov: govRef.current, lastError: null,
       /* Matter Lab Ultra: perf surface for the low-end pipeline */
       perf: { deviceSummary: deviceSummary(), lowEnd: PERF.lowEnd, capParts: PERF.capParts, setCapParts: applyPerfCap },
+      perfStats: () => { const st = e.stats(); let memMB = 0; try { if (typeof navigator !== 'undefined' && navigator.deviceMemory) memMB = navigator.deviceMemory * 1024; } catch {} return { memMB, parts: st.particles, emaMs: st.emaMs, tier: st.tier, grid: `${e.cols}x${e.rows}` }; },
       get tickRate() { return govRef.current.tickRate; }, get ladderStep() { return govRef.current.ladderStep; },
       get tierIndex() { return govRef.current.tierIndex; }, get startTierIndex() { return govRef.current.startTierIndex; },
       place: (key, x, y, r = 3) => e.paint(x, y, r, (BY_KEY.get(key) || {}).id || 0),
